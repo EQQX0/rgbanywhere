@@ -2,7 +2,10 @@
 # RGB Control installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
 # Installs Python packages, builds the embedded OpenRGB core if needed, then sets up the login tasks, the startup entry and the Start menu shortcut.
 # Asks for admin once (the lighting daemon needs it to reach RAM lights and some boards).
-param([switch]$NoStartup)
+#   -NoStartup  do not start the app at login
+#   -Desktop    put the shortcut on the desktop instead of the Start menu
+#   -Quiet      for the Setup exe: no prompts, log to install.log, exit code 1 on failure, start the lighting daemon at the end
+param([switch]$NoStartup, [switch]$Desktop, [switch]$Quiet)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -11,8 +14,14 @@ $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 if (-not $admin) {
     $a = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$($MyInvocation.MyCommand.Path)`"")
     if ($NoStartup) { $a += '-NoStartup' }
+    if ($Desktop) { $a += '-Desktop' }
+    if ($Quiet) { $a += '-Quiet' }
     Start-Process powershell -Verb RunAs -ArgumentList $a -Wait
     exit
+}
+if ($Quiet) {
+    Start-Transcript -Path (Join-Path $here 'install.log') -Force | Out-Null
+    trap { Write-Host "FAILED: $_"; try { Stop-Transcript | Out-Null } catch {}; exit 1 }
 }
 $user = "$env:USERDOMAIN\$env:USERNAME"   # the elevated shell is still this user
 
@@ -77,7 +86,35 @@ if (-not $NoStartup) {
     Set-ItemProperty $run -Name 'RGB Anywhere' -Value ('"{0}" "{1}" --tray' -f $pyw, (Join-Path $here 'rgb_app.pyw'))
     Write-Host "Startup entry set"
 }
-& $py (Join-Path $here 'make_shortcut.py')
+$sc = @((Join-Path $here 'make_shortcut.py'))
+if ($Desktop) { $sc += '--desktop' }
+& $py @sc
+if ($LASTEXITCODE) { throw "could not create the shortcut" }
 
-Write-Host "`nDone. Start 'RGB Anywhere' from the Start menu, or run:  schtasks /run /tn `"RGB Anywhere Lighting`""
+# 6. Entry in Settings > Apps (per user). Uninstall.exe is a copy of the Setup exe that the Setup window puts here.
+$unexe = Join-Path $here 'Uninstall.exe'
+if (Test-Path $unexe) {
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RGB Anywhere'
+    New-Item $key -Force | Out-Null
+    $ver = if (Test-Path (Join-Path $here 'version.txt')) { (Get-Content (Join-Path $here 'version.txt') -TotalCount 1).Trim() } else { '' }
+    $kb = [int]((Get-ChildItem $here -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1KB)
+    $vals = @{
+        DisplayName = 'RGB Anywhere'; DisplayVersion = $ver; Publisher = 'EQQX2'; InstallLocation = $here
+        DisplayIcon = (Join-Path $here 'rgb.ico'); UninstallString = ('"{0}" /uninstall' -f $unexe)
+        URLInfoAbout = 'https://github.com/EQQX0/rgbanywhere'
+    }
+    foreach ($k in $vals.Keys) { Set-ItemProperty $key -Name $k -Value $vals[$k] }
+    foreach ($k in 'NoModify', 'NoRepair') { Set-ItemProperty $key -Name $k -Value 1 -Type DWord }
+    Set-ItemProperty $key -Name EstimatedSize -Value $kb -Type DWord
+    Write-Host "Added to Settings > Apps"
+}
+
+if ($Quiet) {
+    Start-ScheduledTask -TaskName 'RGB Anywhere Lighting'   # start the daemon now instead of at the next login
+    Write-Host "Done."
+    Stop-Transcript | Out-Null
+    exit 0
+}
+$where = if ($Desktop) { 'the desktop' } else { 'the Start menu' }
+Write-Host "`nDone. Start 'RGB Anywhere' from $where, or run:  schtasks /run /tn `"RGB Anywhere Lighting`""
 Write-Host "Optional per-PC settings (monitor, vendor workarounds, device overrides) go in config.json - see README.md."

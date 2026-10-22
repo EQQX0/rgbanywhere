@@ -1,4 +1,4 @@
-﻿# Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
 # Build a ready-to-run release zip: dist\RGBAnywhere-<version>-win64.zip
 #   powershell -ExecutionPolicy Bypass -File package.ps1 [-Version 0.1.0] [-SkipBuild]
 # The zip holds the app, rgbcore.dll (built by build.ps1), the runtime DLLs, and its own Python with every package
@@ -34,10 +34,11 @@ Copy-Item "$site\pywin32_system32\*.dll" "$stage\python" -Force   # pywintypes/p
 
 # 2. App, core and runtime files
 $files = '*.py','*.pyw','rgbcore.dll','PawnIOLib.dll','hidapi-hotplug.dll','libusb-1.0.dll','libwinpthread-1.dll','*.bin',
-         'rgb.ico','config.example.json','requirements.txt','install.ps1','LICENSE','NOTICE','THIRD_PARTY_LICENSES.md','README.md'
+         'rgb.ico','config.example.json','requirements.txt','install.ps1','uninstall.ps1','LICENSE','NOTICE','THIRD_PARTY_LICENSES.md','README.md'
 foreach ($f in $files) { Copy-Item (Join-Path $here $f) $stage -Force }
 Copy-Item (Join-Path $here 'ui') $stage -Recurse -Force
 [IO.File]::WriteAllText("$stage\Install.cmd", "@echo off`r`ncd /d `"%~dp0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File install.ps1`r`npause`r`n")
+Set-Content "$stage\version.txt" $Version -Encoding ascii
 [IO.File]::WriteAllText("$stage\SOURCE.txt", @"
 RGB Anywhere $Version. Corresponding source (GPL): https://github.com/EQQX0/rgbanywhere  (tag v$Version)
 It includes OpenRGB (GPL-2.0-or-later) in third_party/openrgb; rgbcore.dll is built from that source with build.ps1.

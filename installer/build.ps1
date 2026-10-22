@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-# Builds installer\RGB-Anywhere-Setup.exe (a small downloader/installer). Needs MinGW-w64 GCC (see ..\README.md).
+# Builds installer\RGB-Anywhere-Setup.exe (the installer window). Needs MinGW-w64 GCC (see ..\README.md).
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $winlibs = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Directory -Filter 'BrechtSanders.WinLibs*' -ErrorAction SilentlyContinue |
@@ -9,7 +9,8 @@ if (-not (Get-Command g++ -ErrorAction SilentlyContinue)) { throw 'g++ not found
 Push-Location $here
 try {
     windres setup.rc -O coff -o setup_res.o
-    g++ -std=c++17 -O2 -s -static -o RGB-Anywhere-Setup.exe setup.cpp setup_res.o -lwininet -ladvapi32 -lshell32
+    if ($LASTEXITCODE) { throw 'windres failed' }
+    g++ -std=c++17 -O2 -s -static -mwindows -municode -o RGB-Anywhere-Setup.exe setup.cpp setup_res.o -lwininet -ladvapi32 -lshell32 -lcomctl32 -lole32 -luuid
     if ($LASTEXITCODE) { throw 'g++ failed' }
     Remove-Item setup_res.o
 } finally { Pop-Location }

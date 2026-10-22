@@ -1,1 +1,2 @@
 1 ICON "../rgb.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID 24 "setup.manifest"
