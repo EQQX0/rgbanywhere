@@ -27,13 +27,17 @@ The detectors probe the same buses OpenRGB does, including SMBus on the motherbo
 
 ## Download
 
-Download `RGB-Anywhere-Setup.exe` from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. It downloads the app (about 75 MB), checks the SHA-256, unpacks it to `%LOCALAPPDATA%\RGB Anywhere` and starts the installer, which asks for admin once. Afterwards, open "RGB Anywhere" from the Start menu. Run the Setup exe again to update; quit the app from the tray icon first.
+Download `RGB-Anywhere-Setup.exe` from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup downloads the app (about 75 MB), checks its SHA-256, unpacks it to `%LOCALAPPDATA%\RGB Anywhere` and runs the installer, which asks for admin once. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
+
+To update, quit the app from the tray icon and run Setup again.
+
+To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts and the install folder, including your settings. The PawnIO driver stays, because other programs may use it.
 
 The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. The installer runs `winget install namazso.PawnIO` when the driver is missing, and prints a warning with the link if that fails. The release does not contain the driver.
 
 Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd`. The `.sha256` file next to it holds the checksum.
 
-Nothing is signed, so Windows SmartScreen may warn you. The zip is built on one PC by `package.ps1`; the Setup exe is built from `installer/setup.cpp` by `installer/build.ps1`.
+Nothing is signed, so Windows SmartScreen may warn you. The checksum is downloaded from the same release as the zip, so it catches a damaged download but not a tampered release. The zip is built on one PC by `package.ps1`; the Setup exe is built from `installer/setup.cpp` by `installer/build.ps1`.
 
 ## Build and install from source
 
@@ -51,7 +55,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1      # builds rgbcore.dll and
 powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry and the Start menu shortcut. RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
+`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
 
 Add `-Android` to `build.ps1` to build the Android app as well. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
 
