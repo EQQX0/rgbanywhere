@@ -49,3 +49,6 @@ HANDOFF.md
 # Release packaging
 dist/
 build_all.log
+
+installer/*.exe
+installer/*.o

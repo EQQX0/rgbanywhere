@@ -49,4 +49,8 @@ $zip = Join-Path $dist "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path $stage -DestinationPath $zip -CompressionLevel Optimal
 (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  $name.zip" | Set-Content (Join-Path $dist "$name.zip.sha256") -Encoding ascii
+# Fixed-name copy: RGB-Anywhere-Setup.exe downloads releases/latest/download/RGBAnywhere-win64.zip
+$latest = Join-Path $dist 'RGBAnywhere-win64.zip'
+Copy-Item $zip $latest -Force
+(Get-FileHash $latest -Algorithm SHA256).Hash.ToLower() + "  RGBAnywhere-win64.zip" | Set-Content "$latest.sha256" -Encoding ascii
 Write-Host "Built $zip ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"

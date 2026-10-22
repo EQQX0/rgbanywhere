@@ -27,9 +27,13 @@ The detectors probe the same buses OpenRGB does, including SMBus on the motherbo
 
 ## Download
 
-Get `RGBAnywhere-<version>-win64.zip` from the [Releases page](https://github.com/EQQX0/rgbanywhere/releases), extract it to a folder you will keep, and run `Install.cmd`. The zip has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. The installer runs `winget install namazso.PawnIO` when the driver is missing, and prints a warning with the link if that fails. The zip does not contain the driver. Check the SHA-256 in the `.sha256` file if you like.
+Download `RGB-Anywhere-Setup.exe` from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. It downloads the app (about 75 MB), checks the SHA-256, unpacks it to `%LOCALAPPDATA%\RGB Anywhere` and starts the installer, which asks for admin once. Afterwards, open "RGB Anywhere" from the Start menu. Run the Setup exe again to update; quit the app from the tray icon first.
 
-The zip is built on one PC by `package.ps1`. It has not been signed, so Windows SmartScreen may warn you.
+The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. The installer runs `winget install namazso.PawnIO` when the driver is missing, and prints a warning with the link if that fails. The release does not contain the driver.
+
+Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd`. The `.sha256` file next to it holds the checksum.
+
+Nothing is signed, so Windows SmartScreen may warn you. The zip is built on one PC by `package.ps1`; the Setup exe is built from `installer/setup.cpp` by `installer/build.ps1`.
 
 ## Build and install from source
 
