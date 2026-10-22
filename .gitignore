@@ -1,0 +1,47 @@
+# Per-user state and secrets
+state.json
+state.json.*
+config.json
+accent_backup.json
+rgbd.token
+logs/
+cache/
+backups/
+backup_*/
+legacy/
+profiles/
+*.log
+*.corrupt-*
+*.tmp
+
+# Android signing and SDK
+android/rgb-control.keystore
+android/*.keystore
+android/*.jks
+android/sdk/
+android/tools/
+android/build/
+android/*.apk
+android/*.idsig
+*.keystore
+*.jks
+*.apk
+
+# Build outputs (made by build.ps1)
+build/
+/rgbcore.dll
+/PawnIOLib.dll
+/hidapi-hotplug.dll
+/libusb-1.0.dll
+/libwinpthread-1.dll
+/*.bin
+compiled_sources.txt
+
+# Python / editor
+__pycache__/
+*.pyc
+.venv/
+.vscode/
+.idea/
+nircmd.exe
+HANDOFF.md

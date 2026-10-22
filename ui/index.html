@@ -1,0 +1,1674 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#08080c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>RGB Control</title>
+<style>
+  :root {
+    --page: #08080c;
+    --bg: rgba(0, 0, 0, 0.32);             /* inset fields on glass */
+    --surface: rgba(255, 255, 255, 0.055);  /* glass panels */
+    --surface-2: rgba(255, 255, 255, 0.07);
+    --surface-3: rgba(255, 255, 255, 0.13);
+    --border: rgba(255, 255, 255, 0.10);
+    --border-strong: rgba(255, 255, 255, 0.18);
+    --glass-blur: blur(26px) saturate(160%);
+    --glass-shadow: inset 0 1px 0 rgba(255,255,255,.10), inset 0 0 0 1px rgba(255,255,255,.02), 0 24px 60px -24px rgba(0,0,0,.75);
+    --text: #ececf1;
+    --muted: #9d9daa;
+    --faint: #84848f;        /* 4.5:1 on the glass cards: the lowest contrast small text may have */
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --focus: #9db8ff;
+    --live: #ff4d4d;
+    --c: #ff3c00;            /* current color (set from JS) */
+    --c-safe: #ff3c00;       /* current color, lightened if too dark to see on the dark UI */
+    --c-on: #ffffff;         /* knob/text color that contrasts with --c-safe */
+    --c-glow: rgba(255, 60, 0, 0.35);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --ease: cubic-bezier(.2, .7, .2, 1);
+    --spring: cubic-bezier(.34, 1.56, .64, 1);
+    --dur-press: .1s;
+    --dur: .2s;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--page);
+    color: var(--text);
+    font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    overflow: hidden;
+  }
+  /* vivid, slowly drifting backdrop that the glass panels blur */
+  .backdrop { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+  .backdrop i { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; }
+  .backdrop .b1 { width: 46vw; height: 46vw; left: -8vw; top: -14vw; background: var(--c); transition: background .5s var(--ease); animation: drift1 26s ease-in-out infinite alternate; }
+  .backdrop .b2 { width: 40vw; height: 40vw; right: -10vw; top: 10vh; background: #4338ca; opacity: .45; animation: drift2 32s ease-in-out infinite alternate; }
+  .backdrop .b3 { width: 36vw; height: 36vw; left: 30vw; bottom: -20vw; background: #0e7490; opacity: .4; animation: drift3 29s ease-in-out infinite alternate; }
+  .backdrop::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 40%, transparent, rgba(8,8,12,.55)); }
+  @keyframes drift1 { to { transform: translate(10vw, 8vh) scale(1.1); } }
+  @keyframes drift2 { to { transform: translate(-12vw, 6vh) scale(.92); } }
+  @keyframes drift3 { to { transform: translate(-8vw, -10vh) scale(1.08); } }
+  .glass { background: var(--surface); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow); }
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }   /* page still scrolls if a tiny window needs it, just no bar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: rgba(255,255,255,.22); }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  /* Android WebView paints a rectangular tint behind a pressed element; our press animation replaces it */
+  button, input, [role="switch"] { -webkit-tap-highlight-color: transparent; }
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  body { display: flex; overflow: auto; }
+  .app { position: relative; z-index: 1; display: flex; flex-direction: column; width: 100%; max-width: 1180px; margin: auto; padding: 18px 22px 22px; gap: 16px; }
+
+  /* ---------- header ---------- */
+  header { display: flex; align-items: center; gap: 14px; }
+  .logo { display: grid; grid-template-columns: repeat(2, 9px); gap: 3px; }
+  .logo i { width: 9px; height: 9px; border-radius: 3px; display: block; }
+  h1 { margin: 0; font: 600 17px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: .2px; white-space: nowrap; }
+  .spacer { flex: 1; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px;
+    border-radius: 999px; background: var(--surface); border: 1px solid var(--border);
+    backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    color: #c4c4cf; font-size: 12.5px; white-space: nowrap; flex-shrink: 0;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(74, 222, 128, .15); }
+  .dot.warn { background: var(--warn); }
+  .dot.bad { background: var(--bad); }
+
+  .switch { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 4px; border-radius: 999px; color: var(--muted); font-size: 13px; white-space: nowrap; flex-shrink: 0; }
+  .switch .track { width: 42px; height: 24px; border-radius: 999px; background: var(--surface-3); position: relative; transition: background .2s var(--ease); border: 1px solid var(--border); }
+  .switch .knob { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .2s var(--ease); box-shadow: 0 0 0 1px rgba(0,0,0,.28), 0 1px 3px rgba(0,0,0,.4); }
+  .switch[aria-checked="true"] .track { background: var(--c-safe); border-color: rgba(255,255,255,.25); }
+  .switch[aria-checked="true"] .knob { background: var(--c-on); }
+  .switch[aria-checked="true"] .knob { transform: translateX(18px); }
+  .switch[aria-checked="true"] { color: var(--text); }
+
+  /* ---------- layout ---------- */
+  main { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); box-shadow: var(--glass-shadow); border: 1px solid var(--border); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .card-head { display: flex; align-items: center; gap: 10px; }
+  .card-head h2 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .label { font-size: 13px; color: var(--muted); font-weight: 500; }
+
+  /* ---------- lighting ---------- */
+  .lighting { transition: opacity .25s var(--ease); }
+  .lighting.off .dim { opacity: .4; }
+  .off-note { display: none; font-size: 12.5px; color: var(--muted); }
+  .lighting.off .off-note { display: block; }
+
+  [hidden] { display: none !important; }
+  .targets { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; }
+  .target {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 9px 4px 8px;
+    background: transparent; border: 1px solid transparent; border-radius: 9px; color: var(--muted);
+    font-size: 12.5px; transition: background .15s var(--ease), color .15s var(--ease);
+  }
+  .target:hover { background: var(--surface-2); color: var(--text); }
+  .target[aria-pressed="true"] { background: var(--surface-3); color: var(--text); border-color: var(--border-strong); }
+  .target .sw { width: 16px; height: 16px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 0 0 1px rgba(0,0,0,.4); }
+
+  .editor { display: flex; gap: 16px; align-items: stretch; }
+  .preview {
+    width: 92px; flex: none; border-radius: 14px; background: var(--c);
+    box-shadow: 0 10px 30px -8px var(--c-glow), inset 0 0 0 1px rgba(255,255,255,.28), 0 0 0 1px rgba(0,0,0,.4);
+    transition: background .12s linear, box-shadow .3s var(--ease);
+  }
+  .fields { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .hexrow { display: flex; align-items: center; gap: 10px; }
+  .hex {
+    display: flex; align-items: center; height: 40px; padding: 0 12px; gap: 4px; flex: 1;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 17px; font-weight: 600; letter-spacing: 1px; font-variant-numeric: tabular-nums;
+  }
+  .hex:focus-within { border-color: var(--focus); }
+  .hex span { color: var(--faint); }
+  .hex input { border: 0; background: none; width: 100%; outline: none; text-transform: uppercase; letter-spacing: 1px; font: inherit; }
+  .which { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+  .chan { display: grid; grid-template-columns: 14px 1fr 58px; align-items: center; gap: 12px; }
+  .chan b { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .num {
+    height: 32px; width: 100%; text-align: center; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+  }
+  .num:focus { border-color: var(--focus); }
+  .num::-webkit-inner-spin-button { display: none; }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 26px; background: transparent; cursor: pointer; margin: 0; }
+  /* track: the gradient sits on a mid-grey base with a light outline, so even an all-black or all-white
+     gradient stays visible on the dark glass */
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 10px; border-radius: 999px;
+    background: var(--track, var(--surface-3)), #3a3a44;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.28), 0 0 0 2px rgba(0,0,0,.35);
+  }
+  /* thumb: white core + dark ring + light outer ring = visible on any track color */
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; margin-top: -5px; border-radius: 50%;
+    background: #fff; border: 3px solid #0b0b0f; box-shadow: 0 0 0 1.5px rgba(255,255,255,.85), 0 2px 6px rgba(0,0,0,.6);
+    transition: transform .12s var(--ease);
+  }
+  input[type=range]:active::-webkit-slider-thumb { transform: scale(1.12); }
+  input[type=range]:focus-visible { outline: none; }
+  input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--focus); }
+
+  .bright { display: grid; grid-template-columns: 1fr 52px; gap: 12px; align-items: center; }
+  .bright output { text-align: right; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; }
+  .preset {
+    display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px 0 8px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; font-size: 13px;
+    transition: background .15s var(--ease), border-color .15s var(--ease);
+  }
+  .preset:hover { background: var(--surface-3); border-color: var(--border-strong); }
+  .preset i { width: 18px; height: 18px; border-radius: 50%; display: block; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 0 0 1px rgba(0,0,0,.4); }
+  .preset i.split { background: conic-gradient(var(--a) 0 50%, var(--b) 0 100%); }
+  .sechead { display: flex; align-items: center; justify-content: space-between; }
+  /* Edit / Done: switches clicks on presets (or profiles) from "apply" to "open it to edit", on every screen */
+  .linkbtn {
+    display: inline-flex; align-items: center; height: 28px; margin: -6px -8px -6px 0; padding: 0 10px; border: 0; border-radius: 8px;
+    background: none; color: var(--focus); font-size: 13.5px; font-weight: 500; transition: background .15s var(--ease);
+  }
+  .linkbtn:hover { background: var(--surface-2); }
+  .linkbtn[aria-pressed="true"] { background: var(--surface-3); }
+  .preset.add { background: transparent; border-style: dashed; color: var(--muted); padding: 0 14px 0 10px; }
+  .preset.add:hover { color: var(--text); }
+  .preset .pen { display: none; color: var(--muted); }
+  /* edit mode (touch): same chips, a pencil says "tap to edit", the outline brightens */
+  .presets.editing .preset[data-i] { border-color: var(--border-strong); background: var(--surface-3); }
+  .presets.editing .preset .pen { display: inline-flex; }
+  .phint { margin: -4px 0 0; font-size: 13px; color: var(--muted); }
+
+  /* ---------- preset sheet ---------- */
+  .field { display: flex; flex-direction: column; gap: 8px; }
+  .field > span { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .field input:not([type=radio]) {
+    height: 46px; padding: 0 14px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border-strong);
+    font-size: 16px; outline: none; user-select: text;
+  }
+  .field input:not([type=radio]):focus { border-color: var(--focus); }
+  .opt {
+    display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; border-radius: 12px; cursor: pointer;
+    background: var(--bg); border: 1px solid var(--border); font-size: 14px; transition: border-color .15s var(--ease), background .15s var(--ease);
+  }
+  .opt:has(input:checked) { border-color: var(--focus); background: var(--surface-2); }
+  .opt.static { cursor: default; }
+  .opt input { width: 20px; height: 20px; margin: 0; accent-color: var(--focus); flex: none; }
+  .optsw i { width: 28px; height: 28px; border-radius: 50%; display: block; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 0 0 1px rgba(0,0,0,.4); }
+  .optsw i.split { background: conic-gradient(var(--a) 0 50%, var(--b) 0 100%); }
+  .btn.danger { background: transparent; color: var(--bad); border-color: rgba(248, 113, 113, .4); }
+  .btn.danger:hover { background: rgba(248, 113, 113, .12); }
+  .footr { display: flex; gap: 8px; }
+  .sheet .dialog { width: min(440px, calc(100vw - 40px)); gap: 16px; }
+  .otxt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .otxt small { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .optsw img { width: 52px; aspect-ratio: 854 / 480; border-radius: 6px; display: block; object-fit: cover; background: #000; }
+  .optsw { display: flex; align-items: center; gap: 8px; flex: none; }
+  .dialog .prerr { margin: 0; font-size: 13px; color: var(--bad); }
+  .dialog .prerr:empty { display: none; }
+  .sheet .footr { margin-left: auto; }   /* stays on the right when there's no Delete (a new preset or profile) */
+
+  /* ---------- profiles ---------- */
+  .profiles { grid-column: 1 / -1; min-width: 0; }   /* min-width: the strip scrolls inside the card instead of widening the page */
+  .pnote { font-size: 13px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .profiles .linkbtn { margin-left: auto; }
+  /* one row that scrolls sideways, so more profiles never make the desktop window shrink to fit */
+  .ptiles {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 168px; gap: 10px; min-width: 0;
+    overflow-x: auto; scroll-snap-type: x proximity; overscroll-behavior-x: contain;
+    padding: 2px; margin: -2px; scrollbar-width: thin; scrollbar-color: var(--border-strong) transparent;
+  }
+  .ptwrap { position: relative; display: flex; scroll-snap-align: start; }
+  .ptile {
+    flex: 1; display: flex; flex-direction: column; padding: 0; min-width: 0; text-align: left; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    transition: border-color .15s var(--ease), background .15s var(--ease), transform .12s var(--ease);
+  }
+  .ptile:hover { border-color: var(--border-strong); background: var(--surface-3); }
+  .ptile:active { transform: scale(.97); }
+  .ptile .thumb { position: relative; display: grid; place-items: center; aspect-ratio: 854 / 480; background: #000; }
+  .ptile .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ptile .pbar { display: flex; align-items: center; gap: 8px; padding: 0 10px; min-height: 38px; font-size: 13px; }
+  .ptile .pbar i { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 0 0 1px rgba(0,0,0,.4); }
+  .ptile .pbar i.split { background: conic-gradient(var(--a) 0 50%, var(--b) 0 100%); }
+  .ptile .pname { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ptile .pen { display: none; color: var(--muted); }
+  .ptile .ontag {
+    position: absolute; top: 6px; left: 6px; display: none; align-items: center; gap: 4px; height: 20px; padding: 0 7px;
+    border-radius: 999px; background: rgba(10, 10, 14, .72); color: var(--text); font-size: 11.5px; font-weight: 600;
+  }
+  .ptile[aria-current="true"] { border-color: var(--focus); }
+  .ptile[aria-current="true"] .ontag { display: inline-flex; }
+  .ptile.add { background: transparent; border-style: dashed; border-color: var(--border-strong); color: var(--muted); }
+  .ptile.add .thumb { background: transparent; }
+  .ptile.add:hover { color: var(--text); }
+  .ptiles.editing .ptile[data-i] { border-color: var(--border-strong); background: var(--surface-3); }
+  .ptiles.editing .ptile .pen { display: inline-flex; }
+  #toasts {
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 50;
+    display: flex; flex-direction: column-reverse; align-items: center; gap: 8px;
+    width: max-content; max-width: calc(100vw - 24px); pointer-events: none;
+  }
+  .toast {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px;
+    background: rgba(40, 40, 50, .82); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-strong); box-shadow: 0 12px 30px -10px rgba(0,0,0,.7);
+    font-size: 13px; pointer-events: auto; animation: toastIn .28s var(--spring) both;
+  }
+  .toast.out { animation: toastOut .2s var(--ease) both; }
+  .toast .tdot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+  .toast.ok .tdot { background: var(--ok); }
+  .toast.bad .tdot { background: var(--bad); }
+  .toast.info .tdot { background: var(--warn); }
+  .toast button { height: 30px; padding: 0 12px; border-radius: 8px; border: 0; background: #ececf1; color: #111; font-weight: 600; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(16px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(8px) scale(.96); } }
+
+  /* ---------- locked while the lights are off ---------- */
+  .locked { opacity: .45; filter: saturate(.4); cursor: not-allowed !important; }
+  .locked, .locked *, [aria-disabled="true"], [aria-disabled="true"] * { cursor: not-allowed !important; }
+  .shake { animation: shake .32s var(--ease); }
+  .pulse-power { animation: powerPulse .6s var(--ease); }
+  @keyframes shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+  @keyframes powerPulse { 0%, 100% { box-shadow: 0 0 0 0 transparent; } 40% { box-shadow: 0 0 0 6px var(--c-glow); } }
+
+  /* ---------- press + pop animations ---------- */
+  .btn, .ghost, .preset, .target, .linkbtn, .icobtn, .seg button, .ptile, .opt, .switch {
+    transition: transform var(--dur-press) var(--ease), background .15s, border-color .15s, color .15s, box-shadow .2s, opacity .2s, filter .2s;
+  }
+  .btn:active, .ghost:active, .preset:active, .target:active, .linkbtn:active, .icobtn:active,
+  .seg button:active, .ptile:active, .opt:active { transform: scale(.95); }
+  .switch:active .knob { width: 22px; }
+  .switch .knob { transition: transform .2s var(--ease), width .12s var(--ease); }
+  .pop { animation: pop .32s var(--spring); }
+  @keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+  .scrim.on { animation: fadeIn var(--dur) var(--ease); }
+  .scrim.on .dialog { animation: dialogIn .28s var(--spring); }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes dialogIn { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+  .section { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---------- cooler ---------- */
+  .live { display: none; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; background: rgba(255, 77, 77, .12); color: #ff8a8a; font-size: 12.5px; font-weight: 600; line-height: 1; }
+  .live.on { display: inline-flex; }
+  .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+  .model { font-size: 13px; color: var(--faint); margin-left: auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .bezel {
+    position: relative; padding: 10px; border-radius: 20px;
+    background: linear-gradient(160deg, rgba(255,255,255,.10), rgba(0,0,0,.35));
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 18px 40px -18px rgba(0,0,0,.8);
+  }
+  .screen { position: relative; aspect-ratio: 854 / 480; border-radius: 12px; overflow: hidden; background: #000; }
+  .screen video, .screen img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .screen .empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--faint); font-size: 13px; }
+  .overlay {
+    position: absolute; inset: 10px; border-radius: 12px; display: none; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px; text-align: center;
+    background: rgba(10, 10, 14, .78); backdrop-filter: blur(4px); font-size: 14px;
+  }
+  .overlay small { color: var(--muted); font-size: 12px; }
+  .bezel.dragging .overlay.drop, .bezel.busy .overlay.busy { display: flex; }
+  .overlay.drop { border: 2px dashed var(--c-safe); }
+  .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: #fff; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes sheetUp { from { transform: translateY(40px); opacity: 0; } }
+
+  .now { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .now svg { flex: none; color: var(--muted); }
+  .now .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+  .now .msg { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .now .msg.ok { color: var(--ok); }
+  .now .msg.bad { color: var(--bad); }
+
+  .actions { display: flex; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px;
+    border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--surface-2);
+    font-size: 13.5px; font-weight: 500; transition: background .15s var(--ease), border-color .15s var(--ease), opacity .15s;
+  }
+  .btn:hover { background: var(--surface-3); }
+  .btn.primary { background: #ececf1; color: #111; border-color: transparent; flex: 1; }
+  .btn.primary:hover { background: #fff; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .hint { font-size: 13px; color: var(--faint); text-align: center; margin-top: -6px; }
+
+  /* ---------- calibration dialog ---------- */
+  .ghost {
+    display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; margin-left: auto;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--surface-2); color: #c4c4cf; font-size: 12.5px;
+    white-space: nowrap; flex-shrink: 0;  /* a pill split over two lines looks broken; the header wraps whole buttons instead */
+    transition: background .15s var(--ease), color .15s var(--ease);
+  }
+  .ghost:hover { background: var(--surface-3); color: var(--text); }
+  .scrim { position: fixed; inset: 0; z-index: 10; display: none; place-items: center; background: rgba(5, 5, 8, .55); backdrop-filter: blur(6px); }
+  .scrim.on { display: grid; }
+  .dialog {
+    width: min(620px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto;
+    background: rgba(28, 28, 36, .72); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--border-strong); border-radius: 20px; box-shadow: var(--glass-shadow);
+    padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .dialog h3 { margin: 0; font-size: 17px; font-weight: 600; }
+  .dialog p { margin: 0; color: #b4b4c0; font-size: 13px; line-height: 1.55; }
+  .testrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .testrow .preset[aria-pressed="true"] { border-color: var(--focus); background: var(--surface-3); }
+  .calrow { display: grid; grid-template-columns: 86px 1fr 1fr 1fr 64px; gap: 14px; align-items: center; padding: 9px 14px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); }
+  .calrow .dev { font-weight: 600; font-size: 13.5px; }
+  .calrow .ch { display: flex; flex-direction: column; gap: 2px; }
+  .calrow .ch span { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .calrow .pct { display: inline-flex; align-items: center; gap: 2px; cursor: text; }
+  .calnum {
+    width: 42px; height: 22px; padding: 0 4px; text-align: right; border-radius: 6px; border: 1px solid transparent;
+    background: transparent; color: var(--text); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; -moz-appearance: textfield;
+  }
+  .calnum:hover { border-color: var(--border); }
+  .calnum:focus { border-color: var(--focus); background: var(--bg); outline: none; }
+  .calnum::-webkit-inner-spin-button { display: none; }
+  .calrow .reset { height: 30px; border-radius: 8px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 12px; }
+  .calrow .reset:hover { color: var(--text); background: var(--surface-2); }
+  .dialog .foot { display: flex; justify-content: flex-end; gap: 8px; }
+
+  /* ---------- picture editor ---------- */
+  .dialog.edit { width: min(780px, calc(100vw - 24px)); gap: 12px; }
+  .edhead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+  .edname { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .edframe {
+    position: relative; aspect-ratio: 854 / 480; overflow: hidden; background: #000; border-radius: 12px;
+    width: min(100%, max(300px, calc((100vh - 340px) * 1.779))); margin: 0 auto; touch-action: none; cursor: grab; user-select: none;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.18), 0 14px 36px -14px rgba(0,0,0,.8);
+  }
+  .edframe:active { cursor: grabbing; }
+  .edframe img { position: absolute; max-width: none; pointer-events: none; -webkit-user-drag: none; will-change: transform; }
+  .edgrid { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .15s;
+    background: linear-gradient(90deg, transparent 33.2%, rgba(255,255,255,.28) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.28) 66.7%, transparent 66.8%),
+                linear-gradient(0deg, transparent 33.2%, rgba(255,255,255,.28) 33.3%, transparent 33.5%, transparent 66.5%, rgba(255,255,255,.28) 66.7%, transparent 66.8%); }
+  .edframe.moving .edgrid { opacity: 1; }
+  .edtools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); }
+  .seg button { height: 32px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px; }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
+  .icobtn { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--border); background: var(--surface-2); color: #c4c4cf; }
+  .icobtn:hover { background: var(--surface-3); color: var(--text); }
+  .icobtn[aria-pressed="true"] { border-color: var(--focus); color: var(--text); background: var(--surface-3); }
+  .edsliders { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; }
+  .edrow { display: grid; grid-template-columns: 76px 1fr 46px; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .edrow output { text-align: right; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+  .edhint { margin: 0; text-align: center; font-size: 12px; color: var(--faint); }
+  .dialog .foot.split { justify-content: space-between; align-items: center; gap: 12px; }
+  @media (max-width: 640px) {
+    .edsliders { grid-template-columns: 1fr; }
+    .edframe { width: 100%; }
+    .dialog.edit .foot.split { flex-direction: column-reverse; align-items: stretch; }   /* Cancel + Put on cooler on top, Reset below */
+    .dialog.edit .foot.split > div { width: 100%; }
+    .dialog.edit .foot.split > div .btn { flex: 1; }
+    .dialog.edit #edReset { width: 100%; }
+  }
+
+  /* ---------- diagnostics dialog (desktop) ---------- */
+  .ghost.icon { width: 30px; padding: 0; justify-content: center; }
+  .ghost.icon .badge { position: absolute; top: -3px; right: -3px; min-width: 14px; height: 14px; border-radius: 7px; padding: 0 3px; background: var(--bad); color: #111; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; display: none; }
+  .ghost.icon.has-errors .badge { display: block; }
+  #diagBtn { position: relative; }
+  .remote #diagBtn { display: none !important; }
+  .diagsum { padding: 12px 14px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); font-size: 13px; line-height: 1.5; }
+  .diagsum.bad { border-color: rgba(248,113,113,.45); }
+  .diagsum b { font-weight: 600; }
+  .diagpath { font: 500 12px "Cascadia Mono", Consolas, monospace; color: #c4c4cf; word-break: break-all; }
+  .diaglist { max-height: 230px; overflow: auto; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); padding: 6px; font: 12px/1.45 "Cascadia Mono", Consolas, monospace; user-select: text; }
+  .diaglist .ev { display: grid; grid-template-columns: 58px 8px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; align-items: baseline; }
+  .diaglist .ev:hover { background: var(--surface-2); }
+  .diaglist .ev i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: block; align-self: center; }
+  .diaglist .ev.bad i { background: var(--bad); }
+  .diaglist .ev.bad .what { color: #ffb4b4; }
+  .diaglist .ev .when { color: var(--faint); }
+  .diaglist .ev .what { white-space: pre-wrap; word-break: break-word; }
+  .diaglist .empty { padding: 10px; color: var(--faint); }
+
+  /* ---------- phone dialog (desktop) ---------- */
+  .qrwrap { display: flex; gap: 18px; align-items: center; }
+  .qrtile { flex: none; width: 176px; height: 176px; padding: 8px; border-radius: 16px; background: #fff; display: grid; place-items: center; }
+  .qrtile img { width: 100%; height: 100%; image-rendering: pixelated; display: block; }
+  .qrinfo { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .qrurl { font: 500 12.5px "Cascadia Mono", Consolas, monospace; color: #c4c4cf; word-break: break-all; }
+  .qrnote { font-size: 12.5px; color: #b4b4c0; line-height: 1.5; margin: 0; }
+  .qrwarn { font-size: 12.5px; color: var(--warn); line-height: 1.5; margin: 0; }
+  .qroff { color: var(--muted); font-size: 13px; padding: 10px 0 4px; }
+  .rowbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .rowbtns .btn { height: 34px; padding: 0 14px; font-size: 13px; }
+  .switchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); }
+  .switchrow .switch { padding: 0; }
+
+  /* ---------- phone / remote layout ---------- */
+  input[type=range] { touch-action: pan-y; }
+  .remote .app { margin: 0 auto; max-width: 720px; padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
+  .remote #phoneBtn, .remote .hint { display: none !important; }
+  .remote header { flex-wrap: wrap; row-gap: 10px; }   /* a phone in landscape gets touch-size controls that may not fit one row */
+  .banner { display: none; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--surface); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--border-strong); box-shadow: var(--glass-shadow); }
+  .banner.on { display: flex; }
+  .banner b { display: block; font-size: 14.5px; }
+  .banner span { color: #b4b4c0; font-size: 12.5px; line-height: 1.5; }
+  .banner .rowbtns .btn { height: 42px; text-decoration: none; color: var(--text); }
+  .banner .rowbtns .btn.primary { color: #111; }
+  @media (max-width: 640px) {
+    .calrow { grid-template-columns: repeat(3, 1fr); gap: 8px 12px; }
+    .calrow .dev { grid-column: 1 / 3; grid-row: 1; }
+    .calrow .reset { grid-column: 3; grid-row: 1; justify-self: end; width: 72px; }
+    .dialog { padding: 16px; }
+    .app { padding: 14px 14px 24px; gap: 14px; }
+    header { flex-wrap: wrap; row-gap: 10px; }
+    header .spacer { display: none; }
+    header h1 { flex: 1; }
+    .card { padding: 14px; gap: 14px; }
+    .editor { flex-direction: column; }
+    .preview { width: 100%; height: 56px; }
+    .qrwrap { flex-direction: column; align-items: stretch; }
+    .qrtile { align-self: center; }
+  }
+  @media (pointer: coarse) {
+    input[type=range] { height: 40px; }
+    input[type=range]::-webkit-slider-runnable-track { height: 12px; }
+    input[type=range]::-webkit-slider-thumb { width: 30px; height: 30px; margin-top: -9px; }
+    .num { height: 40px; }
+    .btn { height: 46px; }
+    .preset { height: 42px; }
+    .target { padding: 12px 4px 10px; }
+  }
+  /* Touch screens: every control at least 48px, Android's minimum touch target (iOS asks for 44). */
+  @media (pointer: coarse) {
+    .ghost { height: 48px; padding: 0 16px; font-size: 14px; }
+    .switch { min-height: 48px; font-size: 14px; }
+    .btn { height: 48px; }
+    .hex { height: 48px; }
+    input[type=range] { height: 48px; }
+    .num { height: 48px; }
+    .preset { height: 48px; font-size: 14px; }
+    .target { min-height: 56px; }
+    .linkbtn { justify-content: center; height: 48px; min-width: 64px; margin: -14px -12px -14px 0; padding: 0 12px; border-radius: 12px; }   /* big target, no extra row height */
+    .preset { padding-right: 16px; }
+    .field input:not([type=radio]) { height: 50px; }
+    .opt { min-height: 56px; }
+    .toast button { height: 48px; padding: 0 16px; }
+    .ptile .pbar { min-height: 48px; font-size: 14px; }
+  }
+  /* Phone page: logo and status on top, then the two switches, then the two actions, each half the width. */
+  @media (max-width: 640px) {
+    .remote .app { padding-top: max(14px, env(safe-area-inset-top)); }
+    .remote header { gap: 10px; }
+    .remote header .pill { order: 1; }
+    .remote header #power { order: 2; }
+    .remote header #accentSw { order: 3; }
+    .remote header #rescan { order: 4; }
+    .remote header #monitorsOff { order: 5; }
+    .remote header .switch, .remote header .ghost {
+      flex: 1 1 calc(50% - 5px); justify-content: center; margin: 0 !important;
+    }
+    .remote header .switch {
+      justify-content: space-between; padding: 0 8px 0 16px; border-radius: 999px;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+    }
+    /* the sheet rises from the bottom edge, where the thumb already is */
+    .sheet.on { place-items: end stretch; }
+    .sheet .dialog {
+      width: 100%; max-height: 88vh; border-radius: 22px 22px 0 0; border-bottom: 0;
+      padding: 20px 16px max(16px, env(safe-area-inset-bottom)); animation: sheetUp .22s var(--ease);
+    }
+    .card-head { flex-wrap: wrap; row-gap: 6px; }
+    .model { flex-basis: 100%; margin-left: 0; order: 3; }          /* own line under the title instead of squeezing it */
+    .off-note { flex-basis: 100%; order: 3; }
+    .pnote { flex-basis: 100%; order: 3; }
+    .sheet .footr { flex: 1; }
+    .sheet .footr .btn { flex: 1; }
+    /* a bit over two tiles in view, so the cut-off third says "swipe for more" */
+    .ptiles { grid-auto-columns: calc((100% - 20px) / 2.3); }
+  }
+
+  @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+<div class="app">
+  <header>
+    <div class="logo" aria-hidden="true"><i style="background:#ff3c00"></i><i style="background:#a62700"></i><i style="background:#ffb000"></i><i style="background:#3b82f6"></i></div>
+    <h1>RGB Control</h1>
+    <div class="spacer"></div>
+    <div class="pill" role="status"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></div>
+    <button class="ghost icon" id="diagBtn" style="margin-left:0" title="Logs and diagnostics" aria-label="Logs and diagnostics">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+      <span class="badge" id="diagBadge" aria-hidden="true"></span>
+    </button>
+    <button class="ghost" id="phoneBtn" style="margin-left:0" title="Control this from your phone">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+      Phone
+    </button>
+    <button class="ghost" id="rescan" style="margin-left:0" title="A device not changing color? Restart OpenRGB and detect all devices again">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      Rescan
+    </button>
+    <button class="ghost" id="monitorsOff" style="margin-left:0" title="Turn your monitors off. Move the mouse or press a key to wake them.">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      Monitors off
+    </button>
+    <button class="switch" id="accentSw" role="switch" aria-checked="true" aria-label="Match Windows accent color" title="Make the Windows accent color (Start, taskbar, title bars) follow your lighting">
+      <span>Windows</span><span class="track"><span class="knob"></span></span>
+    </button>
+    <button class="switch" id="power" role="switch" aria-checked="true" aria-label="Lighting on or off">
+      <span>Lighting</span><span class="track"><span class="knob"></span></span>
+    </button>
+  </header>
+
+  <div class="banner" id="appBanner" role="region" aria-label="Android app">
+    <div><b>Get the Android app</b><span>Its own icon, opens full screen and remembers your PC. If Android blocks the install, allow “Install unknown apps” for this browser when it asks.</span></div>
+    <div class="rowbtns">
+      <a class="btn primary" id="apkLink" href="/app.apk">Download app</a>
+      <a class="btn" id="openApp" href="#">I installed it: open</a>
+      <button class="btn" id="bannerX">Not now</button>
+    </div>
+  </div>
+
+  <main>
+    <!-- Profiles: a lighting setup and a cooler picture, applied together -->
+    <section class="card profiles" aria-label="Profiles">
+      <div class="card-head"><h2>Profiles</h2><span class="pnote" id="prNote">Colors and cooler picture together</span>
+        <button class="linkbtn" id="profEdit" aria-pressed="false" aria-controls="profiles">Edit</button></div>
+      <p class="phint" id="profHint" style="display:none">Tap a profile to rename it, update it or delete it.</p>
+      <div class="ptiles" id="profiles"></div>
+    </section>
+
+    <!-- Lighting -->
+    <section class="card lighting" id="lighting" aria-label="Lighting">
+      <div class="card-head"><h2>Lighting</h2><span class="off-note">Lights are off. Turn them on to change colors.</span>
+        <button class="ghost" id="calOpen" title="Make every device show the same color">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+          Calibrate
+        </button>
+      </div>
+
+      <div class="targets dim" role="group" aria-label="Device" id="targets"></div>
+
+      <div class="editor dim">
+        <div class="preview" id="preview" aria-hidden="true"></div>
+        <div class="fields">
+          <div class="hexrow">
+            <label class="hex" for="hex"><span>#</span><input id="hex" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Hex color"></label>
+            <span class="which" id="which">All devices</span>
+          </div>
+          <div class="chan"><b>R</b><input type="range" min="0" max="255" id="r" aria-label="Red"><input class="num" type="number" min="0" max="255" id="rn" aria-label="Red value"></div>
+          <div class="chan"><b>G</b><input type="range" min="0" max="255" id="g" aria-label="Green"><input class="num" type="number" min="0" max="255" id="gn" aria-label="Green value"></div>
+          <div class="chan"><b>B</b><input type="range" min="0" max="255" id="b" aria-label="Blue"><input class="num" type="number" min="0" max="255" id="bn" aria-label="Blue value"></div>
+        </div>
+      </div>
+
+      <div class="section dim">
+        <span class="label">Brightness</span>
+        <div class="bright"><input type="range" min="5" max="100" id="bright" aria-label="Brightness"><output id="brightOut">100%</output></div>
+      </div>
+
+      <div class="section dim">
+        <div class="sechead"><span class="label">Presets</span><button class="linkbtn" id="presetEdit" aria-pressed="false" aria-controls="presets">Edit</button></div>
+        <p class="phint" id="presetHint" style="display:none">Tap a preset to rename it, change its colors or delete it.</p>
+        <div class="presets" id="presets"></div>
+      </div>
+    </section>
+
+    <!-- Cooler -->
+    <section class="card" id="coolerCard" aria-label="Cooler screen">
+      <div class="card-head">
+        <h2>Cooler screen</h2>
+        <span class="live" id="live"><i></i>Live</span>
+        <span class="model">DeepCool LT360 VISION · 854×480</span>
+      </div>
+
+      <div class="bezel" id="bezel">
+        <div class="screen" id="screen">
+          <div class="empty" id="empty">Nothing playing</div>
+          <video id="video" muted loop autoplay playsinline></video>
+        </div>
+        <div class="overlay drop"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>Drop to put it on the cooler<small>Images, GIFs and videos</small></div>
+        <div class="overlay busy"><div class="spinner"></div><span id="busyText">Converting…</span><small>The screen blinks while DeepCool reloads</small></div>
+      </div>
+
+      <div class="now">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m10 9 5 3-5 3z"/></svg>
+        <span class="name" id="nowName">—</span>
+        <span class="msg" id="nowMsg"></span>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="choose">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg>
+          Choose file
+        </button>
+        <button class="btn" id="restore">Restore original</button>
+      </div>
+      <div class="hint">Or drag an image, GIF or video onto the screen above.</div>
+    </section>
+  </main>
+</div>
+
+<div class="scrim" id="cal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
+  <div class="dialog">
+    <h3 id="calTitle">Calibrate colors</h3>
+    <p>Every device now shows the test color. Adjust R, G or B on any device that looks off until they all match.
+       100% is no change. Start with white, then check your own color.</p>
+    <div class="testrow" id="calTests"></div>
+    <div id="calRows" style="display:flex;flex-direction:column;gap:8px"></div>
+    <div class="foot"><button class="btn primary" id="calDone" style="flex:none;padding:0 22px">Done</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="diag" role="dialog" aria-modal="true" aria-labelledby="diagTitle">
+  <div class="dialog" style="width:min(680px,calc(100vw - 24px))">
+    <h3 id="diagTitle">Diagnostics</h3>
+    <p>Everything the app does is written to log files, including attempts that failed, with the technical details.
+       That makes problems possible to track down and fix later.</p>
+    <div class="diagsum" id="diagSum" role="status"></div>
+    <div class="diagpath" id="diagPath"></div>
+    <div class="diaglist" id="diagList" tabindex="0" aria-label="Recent activity"></div>
+    <div class="rowbtns">
+      <button class="btn" id="diagOpen">Open logs folder</button>
+      <button class="btn" id="diagReport" title="A zip with the logs, your settings (without secrets) and system info, to share when something's wrong">Save debug report</button>
+      <span class="edhint" id="diagMsg" style="align-self:center;text-align:left"></span>
+    </div>
+    <div class="foot"><button class="btn primary" id="diagDone" style="flex:none;padding:0 22px">Done</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="editor" role="dialog" aria-modal="true" aria-labelledby="edTitle">
+  <div class="dialog edit">
+    <div class="edhead"><h3 id="edTitle">Adjust picture</h3><span class="edname" id="edName"></span></div>
+    <div class="edframe" id="edFrame" tabindex="0" aria-label="Preview of the cooler screen. Drag to move the picture, scroll or pinch to zoom. Arrow keys move it, plus and minus zoom.">
+      <img id="edBg" alt="" draggable="false" style="display:none">
+      <img id="edImg" alt="" draggable="false">
+      <div class="edgrid"></div>
+    </div>
+    <div class="edtools">
+      <div class="seg" id="edFit" role="group" aria-label="How the picture fits the screen">
+        <button data-f="fill" title="Cover the whole screen, cropping the edges">Fill</button>
+        <button data-f="fit" title="Show the whole picture with black bars">Fit</button>
+        <button data-f="blur" title="Show the whole picture on a blurred copy of itself">Blur</button>
+      </div>
+      <button class="icobtn" id="edRotL" aria-label="Rotate left" title="Rotate left"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 2v6h6"/><path d="M2.66 15.57a10 10 0 1 0 .57-8.38"/></svg></button>
+      <button class="icobtn" id="edRotR" aria-label="Rotate right" title="Rotate right"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38"/></svg></button>
+      <button class="icobtn" id="edFlip" aria-label="Mirror" aria-pressed="false" title="Mirror left to right"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><path d="M8 7 3 17h5z"/><path d="m16 7 5 10h-5z"/></svg></button>
+    </div>
+    <div class="edsliders">
+      <label class="edrow">Zoom<input type="range" id="edZoom" min="0" max="1000" aria-label="Zoom"><output id="edZoomV"></output></label>
+      <label class="edrow">Brightness<input type="range" id="edBright" min="-90" max="90" aria-label="Brightness"><output id="edBrightV"></output></label>
+      <label class="edrow">Contrast<input type="range" id="edContrast" min="-90" max="90" aria-label="Contrast"><output id="edContrastV"></output></label>
+      <label class="edrow">Saturation<input type="range" id="edSat" min="-90" max="90" aria-label="Saturation"><output id="edSatV"></output></label>
+    </div>
+    <p class="edhint" id="edHint"></p>
+    <div class="foot split">
+      <button class="btn" id="edReset">Reset</button>
+      <div style="display:flex;gap:8px;flex:1;justify-content:flex-end">
+        <button class="btn" id="edCancel">Cancel</button>
+        <button class="btn primary" id="edApply" style="padding:0 22px">Put on cooler</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="phone" role="dialog" aria-modal="true" aria-labelledby="phoneTitle">
+  <div class="dialog">
+    <h3 id="phoneTitle">Control from your phone</h3>
+    <p>Your phone opens the same controls in its browser: colors, presets, on/off, and the cooler screen.
+       It only works on the same Wi-Fi as this PC.</p>
+    <div class="switchrow">
+      <span>Allow phone access</span>
+      <button class="switch" id="phoneSw" role="switch" aria-checked="false" aria-label="Allow phone access"><span class="track"><span class="knob"></span></span></button>
+    </div>
+    <div id="phoneOn" style="display:none;flex-direction:column;gap:12px">
+      <div class="qrwrap">
+        <div class="qrtile"><img id="qrImg" alt="QR code to open RGB Control on your phone"></div>
+        <div class="qrinfo">
+          <p class="qrnote"><b>1.</b> Point your phone's camera at the code.<br><b>2.</b> Open the link. You only need to do this once per phone.</p>
+          <p class="qrnote" id="apkNote" style="display:none"><b>Android:</b> on that page tap <b>Download app</b> to install the RGB Control app. Next time, scanning opens the app directly.
+            <a href="#" id="apkShow" style="color:var(--focus)">Show the file on this PC</a></p>
+          <div class="qrurl" id="qrUrl"></div>
+          <div class="rowbtns">
+            <button class="btn" id="phoneCopy">Copy link</button>
+            <button class="btn" id="phoneNew" title="Signs out every phone that was connected">New link</button>
+          </div>
+        </div>
+      </div>
+      <p class="qrwarn" id="phoneWarn" style="display:none"></p>
+    </div>
+    <div class="foot"><button class="btn primary" id="phoneDone" style="flex:none;padding:0 22px">Done</button></div>
+  </div>
+</div>
+
+<div class="scrim sheet" id="psheet" role="dialog" aria-modal="true" aria-labelledby="psTitle">
+  <form class="dialog" id="psForm" autocomplete="off">
+    <h3 id="psTitle">Edit preset</h3>
+    <label class="field"><span>Name</span><input id="psName" maxlength="24" placeholder="e.g. Movie night"></label>
+    <div class="field" id="psChoice" role="radiogroup" aria-label="Colors">
+      <span>Colors</span>
+      <label class="opt"><input type="radio" name="psc" id="psKeep" checked><span class="optsw" id="psKeepSw"></span>Keep its colors</label>
+      <label class="opt"><input type="radio" name="psc" id="psNow"><span class="optsw" id="psNowSw"></span>Use the colors on now</label>
+    </div>
+    <div class="field" id="psNewNote">
+      <span>Colors</span>
+      <div class="opt static"><span class="optsw" id="psNowNew"></span>Saves the colors on now</div>
+    </div>
+    <div class="foot split">
+      <button type="button" class="btn danger" id="psDelete">Delete</button>
+      <div class="footr">
+        <button type="button" class="btn" id="psCancel">Cancel</button>
+        <button type="submit" class="btn primary">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div class="scrim sheet" id="prsheet" role="dialog" aria-modal="true" aria-labelledby="prTitle">
+  <form class="dialog" id="prForm" autocomplete="off">
+    <h3 id="prTitle">Edit profile</h3>
+    <label class="field"><span>Name</span><input id="prName" maxlength="24" placeholder="e.g. Gaming"></label>
+    <div class="field" id="prChoice" role="radiogroup" aria-label="What it puts on">
+      <span>Colors and cooler picture</span>
+      <label class="opt"><input type="radio" name="prc" id="prKeep" checked><span class="optsw" id="prKeepSw"></span><span class="otxt">Keep what it saved<small id="prKeepTxt"></small></span></label>
+      <label class="opt"><input type="radio" name="prc" id="prNow"><span class="optsw" id="prNowSw"></span><span class="otxt">Use what's on now<small id="prNowTxt"></small></span></label>
+    </div>
+    <div class="field" id="prNewNote">
+      <span>Colors and cooler picture</span>
+      <div class="opt static"><span class="optsw" id="prNewSw"></span><span class="otxt">Saves what's on now<small id="prNewTxt"></small></span></div>
+    </div>
+    <p class="prerr" id="prErr" role="alert"></p>
+    <div class="foot split">
+      <button type="button" class="btn danger" id="prDelete">Delete</button>
+      <div class="footr">
+        <button type="button" class="btn" id="prCancel">Cancel</button>
+        <button type="submit" class="btn primary" id="prSave">Save</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Errors raised inside this page (desktop window or phone) are sent to the PC's log. Queued until the bridge is up.
+(() => {
+  const pending = [];
+  const send = e => {
+    const api = window.pywebview && window.pywebview.api;
+    if (api && api.log_client) { try { Promise.resolve(api.log_client(e)).catch(() => {}); } catch (_) { } }
+    else if (pending.length < 20) pending.push(e);
+  };
+  const report = (level, msg, src, line, stack) => send({
+    level, msg: String(msg).slice(0, 500), src: src || "", line: line || 0, stack: String(stack || "").slice(0, 1500),
+    ua: navigator.userAgent.slice(0, 120),
+  });
+  addEventListener("error", ev => report("error", ev.message, ev.filename, ev.lineno, ev.error && ev.error.stack));
+  addEventListener("unhandledrejection", ev => report("error", "Unhandled promise rejection: " + ((ev.reason && ev.reason.message) || ev.reason),
+    "", 0, ev.reason && ev.reason.stack));
+  const ce = console.error.bind(console);
+  console.error = (...a) => { report("warn", a.map(String).join(" "), "console.error", 0); ce(...a); };
+  addEventListener("pywebviewready", () => pending.splice(0).forEach(send));
+})();
+
+// Opened from a phone? The server marks the page, and `api` talks to the PC over HTTP instead of pywebview.
+const REMOTE = !!window.RGB_REMOTE;
+if (REMOTE) {
+  document.documentElement.classList.add("remote");
+  let lastCall = 0;
+  window.__lastCall = () => lastCall;
+  window.pywebview = { api: new Proxy({}, { get: (_, name) => async (...args) => {
+    lastCall = Date.now();
+    const r = await fetch("/api/" + name, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ args }) });
+    if (r.status === 401) { location.reload(); return; }
+    return r.json();
+  } }) };
+}
+let S = null, presets = [], target = "all", api = null;
+const GROUP_LABELS = { ram: "RAM", fans: "Fans", keyboard: "Keyboard", mouse: "Mouse" };
+let TARGETS = [["all", "All"]], CAL_DEVICES = [];
+let FEATURES = { cooler: true, groups: Object.keys(GROUP_LABELS) };
+// What this PC actually has: the PC reports which device groups exist and whether a DeepCool cooler is installed.
+function applyFeatures(f) {
+  FEATURES = Object.assign({ cooler: true, groups: Object.keys(GROUP_LABELS) }, f || {});
+  CAL_DEVICES = FEATURES.groups.filter(g => GROUP_LABELS[g]).map(g => [g, GROUP_LABELS[g]]);
+  TARGETS = [["all", "All"], ...CAL_DEVICES];
+  if (!TARGETS.some(t => t[0] === target)) target = "all";
+  $("targets").style.gridTemplateColumns = `repeat(${TARGETS.length}, 1fr)`;
+  $("coolerCard").hidden = !FEATURES.cooler;
+  $("prNote").textContent = FEATURES.cooler ? "Colors and cooler picture together" : "Saved colors you can switch between";
+  $("calOpen").hidden = CAL_DEVICES.length < 2;   // nothing to balance with a single device group
+}
+
+const hex2rgb = h => [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16));
+const rgb2hex = c => c.map(v => Math.max(0, Math.min(255, v | 0)).toString(16).padStart(2, "0")).join("").toUpperCase();
+// relative luminance (WCAG); used to keep color-driven controls visible on the dark UI
+const luminance = c => {
+  const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+// mix toward white until the color has at least ~3:1 contrast against the near-black page
+function safeColor(c) {
+  let out = [...c];
+  for (let t = 0.1; luminance(out) < 0.12 && t <= 1; t += 0.1) out = c.map(v => v + (255 - v) * t);
+  return out;
+}
+const colorOf = t => t === "all" ? S.color : (S.groups[t] || S.color);
+
+// ---------- rendering ----------
+function buildStatic() {
+  $("targets").innerHTML = TARGETS.map(([k, l]) =>
+    `<button class="target" data-t="${k}" aria-pressed="false"><span class="sw"></span>${l}</button>`).join("");
+  $("targets").querySelectorAll(".target").forEach(b => b.onclick = () => { if (blocked(b)) return; target = b.dataset.t; render(); });
+  renderPresets();
+}
+
+// ---------- presets ----------
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+function swatch(p) {
+  const other = Object.values(p.groups || {}).find(g => g !== p.color);
+  return other ? `<i class="split" style="--a:#${p.color};--b:#${other}"></i>` : `<i style="background:#${p.color}"></i>`;
+}
+const PEN = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+function renderPresets() {
+  const ed = $("presets").classList.contains("editing");
+  $("presets").innerHTML = presets.map((p, i) =>
+    `<button class="preset" data-i="${i}" title="${ed ? "Edit" : "Apply"} ${esc(p.name)}">${swatch(p)}<span class="pname">${esc(p.name)}</span><span class="pen">${PEN}</span></button>`
+  ).join("") +
+    `<button class="preset add" id="addPreset"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Save current</button>`;
+  $("presets").querySelectorAll(".preset[data-i]").forEach(b => b.onclick = () => {
+    if ($("presets").classList.contains("editing")) return openSheet(+b.dataset.i, b);   // edit mode: a tap edits instead of applying
+    if (blocked(b)) return;
+    const p = presets[b.dataset.i];
+    S.color = p.color; S.groups = { ...(p.groups || {}) }; S.mode = "static"; target = "all";
+    render(); api.apply_preset(+b.dataset.i);
+    replay(b, "pop"); toast(`Applied “${p.name}”`, { key: "apply", ms: 1800 });
+  });
+  $("addPreset").onclick = e => openSheet(null, e.currentTarget);
+  applyLocks();
+}
+async function deletePreset(i) {
+  const removed = presets[i];
+  presets = await api.delete_preset(i);
+  renderPresets();
+  toast(`Deleted “${removed.name}”`, { undo: async () => { presets = await api.restore_preset(i, removed); renderPresets(); toast(`Restored “${removed.name}”`); } });
+}
+
+// One sheet for "save the current colors as a new preset" and "edit preset i" (rename, recolor, delete).
+let editing = null, sheetFrom = null;
+const touch = matchMedia("(pointer: coarse)");
+function openSheet(i, from) {
+  editing = i; sheetFrom = from || null;
+  const p = i === null ? null : presets[i], now = { color: S.color, groups: S.groups || {} };
+  $("psTitle").textContent = p ? "Edit preset" : "New preset";
+  $("psName").value = p ? p.name : "";
+  $("psKeepSw").innerHTML = p ? swatch(p) : "";
+  $("psNowSw").innerHTML = swatch(now);
+  $("psNowNew").innerHTML = swatch(now);
+  $("psChoice").style.display = p ? "" : "none";
+  $("psNewNote").style.display = p ? "none" : "";
+  $("psDelete").style.display = p ? "" : "none";
+  $("psKeep").checked = true;
+  $("psheet").classList.add("on");
+  // On a phone, editing shouldn't throw the keyboard over the sheet; naming a new preset needs it.
+  if (!p || !touch.matches) { $("psName").focus(); if (p) $("psName").select(); }
+}
+function closeSheet() {
+  editing = null;
+  $("psheet").classList.remove("on");
+  if (sheetFrom && document.body.contains(sheetFrom)) sheetFrom.focus();
+}
+$("psForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("psName").value.trim();
+  if (!name) { $("psName").focus(); return; }
+  const isNew = editing === null;
+  try {
+    presets = isNew ? await api.save_preset(name) : await api.update_preset(editing, name, $("psNow").checked);
+  } catch (err) { return toast("Couldn't save the preset", { kind: "bad" }); }
+  closeSheet(); renderPresets();
+  toast(isNew ? `Saved preset “${name}”` : `Updated “${name}”`);
+});
+$("psCancel").onclick = closeSheet;
+$("psDelete").onclick = () => { const i = editing; closeSheet(); deletePreset(i); };
+$("psheet").addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+$("psheet").addEventListener("click", e => { if (e.target === $("psheet")) closeSheet(); });   // tap outside the sheet
+$("presetEdit").onclick = () => {   // edit mode: picking a preset opens it instead of applying it
+  const on = $("presets").classList.toggle("editing");
+  $("presetEdit").setAttribute("aria-pressed", on);
+  $("presetEdit").textContent = on ? "Done" : "Edit";
+  $("presetHint").style.display = on ? "" : "none";
+  renderPresets();   // titles say Edit instead of Apply
+};
+// "Tap" on a phone, "Click" with a mouse
+if (!touch.matches) ["presetHint", "profHint"].forEach(id => $(id).textContent = $(id).textContent.replace(/^Tap/, "Click"));
+
+// ---------- profiles ----------
+// A profile is a preset plus the cooler picture. Tap applies both; editing works like presets (same sheet pattern).
+let profiles = [], coolerName = "";
+const PLUS = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+const profileOn = p => !!S && S.mode !== "off" && p.color === S.color && (!FEATURES.cooler || p.cooler_name === coolerName) &&
+  TARGETS.slice(1).every(([t]) => ((p.groups || {})[t] || p.color) === ((S.groups || {})[t] || S.color));
+function renderProfiles() {
+  const ed = $("profiles").classList.contains("editing");
+  $("profiles").innerHTML = profiles.map((p, i) =>
+    `<span class="ptwrap"><button class="ptile" data-i="${i}" aria-current="${profileOn(p)}" title="${ed ? "Edit" : "Apply"} ${esc(p.name)}">` +
+    `<span class="thumb">${p.thumb ? `<img src="${esc(p.thumb)}" alt="" loading="lazy">` : ""}<span class="ontag">On</span></span>` +
+    `<span class="pbar">${swatch(p)}<span class="pname">${esc(p.name)}</span><span class="pen">${PEN}</span></span></button></span>`
+  ).join("") +
+    `<span class="ptwrap"><button class="ptile add" id="addProfile" aria-label="Save current colors and cooler picture as a profile"><span class="thumb">${PLUS}</span><span class="pbar"><span class="pname">Save current</span></span></button></span>`;
+  $("profiles").querySelectorAll(".ptile[data-i]").forEach(b => b.onclick = () => {
+    if ($("profiles").classList.contains("editing")) return openProfile(+b.dataset.i, b);
+    if (blocked(b)) return;
+    replay(b, "pop");
+    applyProfile(profiles[b.dataset.i]);
+  });
+  $("addProfile").onclick = e => openProfile(null, e.currentTarget);
+  applyLocks();
+}
+function markProfiles() {
+  $("profiles").querySelectorAll(".ptile[data-i]").forEach(b => b.setAttribute("aria-current", profileOn(profiles[b.dataset.i] || {})));
+}
+async function applyProfile(p) {
+  S.color = p.color; S.groups = { ...(p.groups || {}) }; S.mode = "static"; target = "all";
+  if (p.brightness) S.brightness = p.brightness;
+  render();
+  try {
+    const r = await api.apply_profile(p.id);
+    if (r && r.error) setMsg(r.error, "bad"); else toast(`Applied profile “${p.name}”`, { key: "apply", ms: 1800 });
+  } catch (e) { toast("Couldn't apply the profile", { kind: "bad" }); }
+}
+async function deleteProfile(i) {
+  const removed = profiles[i];
+  profiles = await api.delete_profile(removed.id);
+  renderProfiles();
+  toast(`Deleted “${removed.name}”`, { undo: async () => { profiles = await api.restore_profile(i, removed); renderProfiles(); toast(`Restored “${removed.name}”`); } });
+}
+let profEditing = null, profFrom = null;
+function openProfile(i, from) {
+  profEditing = i; profFrom = from || null;
+  const p = i === null ? null : profiles[i], now = { color: S.color, groups: S.groups || {} };
+  const nowTxt = FEATURES.cooler ? "Cooler: " + (coolerName || "nothing set") : "";
+  $("prTitle").textContent = p ? "Edit profile" : "New profile";
+  $("prName").value = p ? p.name : "";
+  $("prKeepSw").innerHTML = p ? (p.thumb ? `<img src="${esc(p.thumb)}" alt="">` : "") + swatch(p) : "";
+  $("prKeepTxt").textContent = p && FEATURES.cooler ? "Cooler: " + (p.cooler_name || "unnamed picture") : "";
+  $("prNowSw").innerHTML = $("prNewSw").innerHTML = swatch(now);
+  $("prNowTxt").textContent = $("prNewTxt").textContent = nowTxt;
+  document.querySelectorAll("#prChoice > span:first-child, #prNewNote > span:first-child").forEach(el => el.textContent = FEATURES.cooler ? "Colors and cooler picture" : "Colors");
+  $("prChoice").style.display = p ? "" : "none";
+  $("prNewNote").style.display = p ? "none" : "";
+  $("prDelete").style.display = p ? "" : "none";
+  $("prKeep").checked = true;
+  $("prErr").textContent = "";
+  $("prSave").disabled = false; $("prSave").textContent = "Save";
+  $("prsheet").classList.add("on");
+  if (!p || !touch.matches) { $("prName").focus(); if (p) $("prName").select(); }
+}
+function closeProfile() {
+  profEditing = null;
+  $("prsheet").classList.remove("on");
+  if (profFrom && document.body.contains(profFrom)) profFrom.focus();
+}
+$("prForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = $("prName").value.trim();
+  if (!name) { $("prName").focus(); return; }
+  const p = profEditing === null ? null : profiles[profEditing];
+  const capture = !p || $("prNow").checked;   // copying the cooler picture and taking a still takes a moment
+  if (capture) { $("prSave").disabled = true; $("prSave").textContent = "Saving…"; }
+  let r;
+  try {
+    r = p ? await api.update_profile(p.id, name, $("prNow").checked) : await api.save_profile(name);
+  } catch (err) { r = { error: "Couldn't reach the PC" }; }
+  $("prSave").disabled = false; $("prSave").textContent = "Save";
+  if (!r || r.error) {
+    $("prErr").textContent = (r && r.error) || "Couldn't save the profile";
+    toast($("prErr").textContent, { kind: "bad" }); return;
+  }
+  profiles = r;
+  closeProfile(); renderProfiles();
+  toast(p ? `Updated “${name}”` : `Saved profile “${name}”`);
+});
+$("prCancel").onclick = closeProfile;
+$("prDelete").onclick = () => { const i = profEditing; closeProfile(); deleteProfile(i); };
+$("prsheet").addEventListener("keydown", e => { if (e.key === "Escape") closeProfile(); });
+$("prsheet").addEventListener("click", e => { if (e.target === $("prsheet")) closeProfile(); });
+$("profEdit").onclick = () => {
+  const on = $("profiles").classList.toggle("editing");
+  $("profEdit").setAttribute("aria-pressed", on);
+  $("profEdit").textContent = on ? "Done" : "Edit";
+  $("profHint").style.display = on ? "" : "none";
+  renderProfiles();
+};
+window.rgbProfiles = p => { profiles = p; renderProfiles(); };
+
+// ---------- toasts ----------
+// toast(text, { kind: "ok" | "bad" | "info", undo: fn, key: "same-key replaces", ms })
+// (a bare function as 2nd argument still means "undo", like the old signature)
+const toastBox = $("toasts");
+function dismissToast(el) {
+  if (!el || el.classList.contains("out")) return;
+  clearTimeout(el._t);
+  el.classList.add("out");
+  el.addEventListener("animationend", () => el.remove(), { once: true });
+  setTimeout(() => el.remove(), 400);   // reduced motion: no animationend
+}
+function toast(text, opt) {
+  if (!text) return;
+  if (typeof opt === "function") opt = { undo: opt };
+  opt = opt || {};
+  const kind = opt.kind || (opt.undo ? "info" : "ok");
+  const ms = opt.ms || (opt.undo ? 6000 : kind === "bad" ? 5000 : 3000);
+  // Same toast still on screen (same text, or same key): keep it, no new animation, just stay longer.
+  const same = [...toastBox.querySelectorAll(".toast:not(.out)")].find(t =>
+    t.dataset.text === text || (opt.key && t.dataset.key === opt.key));
+  if (same && !opt.undo && !same.querySelector("button")) {
+    if (same.dataset.text !== text) { same.lastChild.textContent = text; same.dataset.text = text; }
+    same.className = "toast " + kind;
+    clearTimeout(same._t);
+    same._t = setTimeout(() => dismissToast(same), ms);
+    return;
+  }
+  if (opt.key) toastBox.querySelectorAll(".toast").forEach(t => { if (t.dataset.key === opt.key) dismissToast(t); });
+  const el = document.createElement("div");
+  el.dataset.text = text;
+  el.className = "toast " + kind;
+  if (opt.key) el.dataset.key = opt.key;
+  const dot = document.createElement("span"); dot.className = "tdot";
+  const txt = document.createElement("span"); txt.textContent = text;
+  el.append(dot, txt);
+  if (opt.undo) {
+    const b = document.createElement("button"); b.textContent = "Undo";
+    b.onclick = () => { dismissToast(el); opt.undo(); };
+    el.append(b);
+  }
+  toastBox.append(el);
+  const live = [...toastBox.querySelectorAll(".toast:not(.out)")];
+  live.slice(0, Math.max(0, live.length - 3)).forEach(dismissToast);   // at most 3 on screen
+  el._t = setTimeout(() => dismissToast(el), ms);
+}
+// A command that can fail: toasts the outcome. `fn` may return { error } (phone) or throw (desktop).
+async function run(fn, okText, failText) {
+  try {
+    const r = await fn();
+    if (r && r.error) { toast(r.error, { kind: "bad" }); return r; }
+    if (okText) toast(okText);
+    return r;
+  } catch (e) {
+    toast(failText || "Couldn't reach the PC", { kind: "bad" });
+  }
+}
+
+// ---------- locked while the lights are off ----------
+const isOff = () => !!S && S.mode === "off";
+function replay(el, cls) { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); el.addEventListener("animationend", () => el.classList.remove(cls), { once: true }); }
+// Call at the top of any handler that changes colours. Returns true (and tells the user why) when the lights are off.
+function blocked(el) {
+  if (!isOff()) return false;
+  toast("Turn the lights on to change colors", { kind: "info", key: "locked" });
+  replay(el && el.isConnected ? el : $("lighting"), "shake");
+  replay($("power"), "pulse-power");
+  return true;
+}
+function applyLocks() {
+  const off = isOff();
+  const set = (el, on) => { if (!el) return; el.setAttribute("aria-disabled", on); if (el.matches(".preset,.ptile,#calOpen")) el.classList.toggle("locked", on); };
+  document.querySelectorAll("#targets .target, #r,#g,#b,#rn,#gn,#bn,#hex,#bright").forEach(el => set(el, off));
+  const editing = id => $(id).classList.contains("editing");
+  document.querySelectorAll("#presets .preset[data-i]").forEach(el => set(el, off && !editing("presets")));
+  document.querySelectorAll("#profiles .ptile[data-i]").forEach(el => set(el, off && !editing("profiles")));
+  set($("calOpen"), off);
+}
+
+function render(skip) {
+  const h = colorOf(target), c = hex2rgb(h);
+  const root = document.documentElement.style;
+  root.setProperty("--c", "#" + h);
+  const safe = safeColor(c);
+  root.setProperty("--c-safe", "#" + rgb2hex(safe));
+  root.setProperty("--c-on", luminance(safe) > 0.45 ? "#111114" : "#ffffff");
+  root.setProperty("--c-glow", `rgba(${c[0]},${c[1]},${c[2]},.38)`);
+  if (skip !== "hex") $("hex").value = h;
+  ["r", "g", "b"].forEach((k, i) => {
+    const lo = [...c], hi = [...c]; lo[i] = 0; hi[i] = 255;
+    $(k).style.setProperty("--track", `linear-gradient(90deg,#${rgb2hex(lo)},#${rgb2hex(hi)})`);
+    if (skip !== k) $(k).value = c[i];
+    if (skip !== k + "n") $(k + "n").value = c[i];
+  });
+  $("bright").value = S.brightness;
+  $("bright").style.setProperty("--track", `linear-gradient(90deg,#000,#${h})`);
+  $("brightOut").textContent = S.brightness + "%";
+  $("which").textContent = target === "all" ? "All devices" : TARGETS.find(t => t[0] === target)[1];
+  $("targets").querySelectorAll(".target").forEach(b => {
+    b.setAttribute("aria-pressed", b.dataset.t === target);
+    b.querySelector(".sw").style.background = "#" + colorOf(b.dataset.t);
+  });
+  const on = S.mode !== "off";
+  $("power").setAttribute("aria-checked", on);
+  $("accentSw").setAttribute("aria-checked", S.sync_accent !== false);
+  $("lighting").classList.toggle("off", !on);
+  applyLocks();
+  markProfiles();
+}
+
+// ---------- edits ----------
+let sendTimer = null;
+function setColor(h, skip) {
+  if (target === "all") { S.color = h; S.groups = {}; } else { S.groups[target] = h; }
+  S.mode = "static";
+  render(skip);
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(() => api.set_color(target, h), 40);
+}
+
+// Toast once the user lets go / leaves the field, not on every drag tick.
+const colorDone = () => toast(`Color set to #${colorOf(target)}`, { key: "color", ms: 1800 });
+["r", "g", "b"].forEach((k, i) => {
+  $(k).addEventListener("input", e => { if (blocked(e.target)) return render(); const c = hex2rgb(colorOf(target)); c[i] = +e.target.value; setColor(rgb2hex(c), k); });
+  $(k).addEventListener("change", () => { if (!isOff()) colorDone(); });
+  $(k + "n").addEventListener("input", e => {
+    if (blocked(e.target)) return render();
+    const v = parseInt(e.target.value, 10); if (isNaN(v)) return;
+    const c = hex2rgb(colorOf(target)); c[i] = Math.max(0, Math.min(255, v)); setColor(rgb2hex(c), k + "n");
+  });
+  $(k + "n").addEventListener("change", () => { if (!isOff()) colorDone(); });
+  $(k + "n").addEventListener("blur", () => render());
+});
+$("hex").addEventListener("input", e => {
+  if (blocked(e.target)) return render();
+  let v = e.target.value.replace(/[^0-9a-f]/gi, "").toUpperCase();
+  if (v.length === 3) return;               // wait for 6 digits while typing
+  if (v.length === 6) setColor(v, "hex");
+});
+$("hex").addEventListener("change", e => {
+  if (isOff()) return render();
+  let v = e.target.value.replace(/[^0-9a-f]/gi, "").toUpperCase();
+  if (v.length === 3) v = v.split("").map(x => x + x).join("");
+  if (v.length === 6) { setColor(v); colorDone(); }
+  else { render(); toast("Enter a 6-digit hex color", { kind: "bad" }); }
+});
+$("bright").addEventListener("input", e => {
+  if (blocked(e.target)) return render();
+  S.brightness = +e.target.value; render();
+  clearTimeout(sendTimer); sendTimer = setTimeout(() => api.set_brightness(S.brightness), 40);
+});
+$("bright").addEventListener("change", () => { if (!isOff()) toast(`Brightness ${S.brightness}%`, { key: "bright", ms: 1800 }); });
+$("rescan").onclick = () => { api.rescan(); toast("Rescanning devices…", { kind: "info", key: "rescan" }); };
+$("accentSw").onclick = () => {
+  S.sync_accent = S.sync_accent === false; render(); api.set_sync_accent(S.sync_accent);
+  toast(S.sync_accent ? "Windows accent will follow your lights" : "Windows accent sync off", { key: "accent" });
+};
+$("monitorsOff").onclick = async () => {
+  try {
+    const r = await api.monitors_off();
+    if (r && r.error) throw new Error(r.error);
+    toast("Turning the monitors off…", { kind: "info", key: "monitors" });
+  } catch (e) {  // e.g. a phone talking to an older copy of the app
+    setMsg("Couldn't turn the monitors off", "bad");
+  }
+};
+$("power").onclick = () => {
+  S.mode = S.mode === "off" ? "static" : "off"; render(); api.set_mode(S.mode);
+  toast(S.mode === "off" ? "Lights and monitors off" : "Lights on", { key: "power", ms: 1800 });
+};
+
+// ---------- cooler ----------
+let lastSrc = "";
+function setCooler(c) {
+  $("live").classList.toggle("on", !!c.live);
+  $("nowName").textContent = c.name || "—";
+  if (c.name !== coolerName) { coolerName = c.name || ""; markProfiles(); }
+  if (c.url && c.url !== lastSrc) {
+    lastSrc = c.url;
+    $("video").src = c.url;
+    $("video").play().catch(() => {});
+  }
+  $("empty").style.display = c.url ? "none" : "grid";
+}
+function setBusy(text) {
+  $("bezel").classList.toggle("busy", !!text);
+  $("busyText").textContent = text || "";
+  $("choose").disabled = $("restore").disabled = !!text;
+}
+let lastMsg = "", lastMsgAt = 0;
+function setMsg(text, kind) {
+  $("nowMsg").textContent = text || "";
+  $("nowMsg").className = "msg " + (kind || "");
+  // every cooler/status message also toasts (the phone poll repeats the last one, so skip repeats)
+  const now = Date.now();
+  if (text && (text !== lastMsg || now - lastMsgAt > 5000)) toast(text, { kind: kind === "bad" ? "bad" : kind === "ok" ? "ok" : "info" });
+  if (text) { lastMsg = text; lastMsgAt = now; }
+}
+$("choose").onclick = async () => {
+  let r;
+  try { r = await api.pick_screen(); }   // desktop: native file dialog, then the editor opens with the picture
+  catch (e) { return toast("Couldn't open the picture chooser", { kind: "bad" }); }
+  if (!r) return;
+  if (r.error) setMsg(r.error, "bad"); else openEditor(r);
+};
+$("restore").onclick = () => { api.restore_screen(); toast("Restoring the original cooler picture…", { kind: "info", key: "restore" }); };
+
+// drag & drop: visuals here, the file path is picked up in Python
+let depth = 0;
+const hasFiles = e => [...(e.dataTransfer?.types || [])].includes("Files");
+window.addEventListener("dragenter", e => { if (!hasFiles(e)) return; e.preventDefault(); depth++; $("bezel").classList.add("dragging"); });
+window.addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+window.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; $("bezel").classList.remove("dragging"); } });
+window.addEventListener("drop", e => { e.preventDefault(); depth = 0; $("bezel").classList.remove("dragging"); });
+
+// ---------- python → js ----------
+window.rgbStatus = (text, kind) => { $("statusText").textContent = text; $("statusDot").className = "dot " + kind; };
+window.rgbCooler = setCooler;
+window.rgbBusy = setBusy;
+window.rgbMsg = setMsg;
+window.rgbToast = (text, kind) => toast(text, { kind: kind || "ok" });   // pushed from Python (tray, other phones)
+window.rgbState = s => { S = s; render(); };
+window.rgbPresets = p => { presets = p; renderPresets(); };
+
+// ---------- calibration ----------
+let calTest = "FFFFFF", calTimer = null;
+const gainsOf = g => (S.calibration && S.calibration[g]) || [100, 100, 100];
+
+function calTests() {
+  const opts = [["FFFFFF", "White"], [S.color, "Your color"], ["FF0000", "Red"], ["00FF00", "Green"], ["0000FF", "Blue"]];
+  $("calTests").innerHTML = '<span class="label" style="margin-right:4px">Test color</span>' + opts.map(([h, n]) =>
+    `<button class="preset" data-h="${h}" aria-pressed="${h === calTest}"><i style="background:#${h}"></i>${n}</button>`).join("");
+  $("calTests").querySelectorAll(".preset").forEach(b => b.onclick = () => {
+    calTest = b.dataset.h; api.calibrate(calTest); calTests();
+  });
+}
+function calRows() {
+  $("calRows").innerHTML = CAL_DEVICES.map(([g, n]) => {
+    const v = gainsOf(g);
+    return `<div class="calrow" data-g="${g}"><span class="dev">${n}</span>` +
+      ["R", "G", "B"].map((c, i) =>
+        `<div class="ch"><span>${c}<label class="pct"><input class="calnum" type="number" min="0" max="200" value="${v[i]}" data-i="${i}" aria-label="${n} ${c} percent">%</label></span>` +
+        `<input class="calrange" type="range" min="0" max="200" value="${v[i]}" data-i="${i}" aria-label="${n} ${c} strength"></div>`).join("") +
+      `<button class="reset">Reset</button></div>`;
+  }).join("");
+  $("calRows").querySelectorAll(".calrow").forEach(row => {
+    const g = row.dataset.g;
+    const set = (i, val, from) => {
+      const v = [...gainsOf(g)]; v[i] = Math.max(0, Math.min(200, val | 0));
+      S.calibration = { ...(S.calibration || {}), [g]: v };
+      if (from !== "num") row.querySelector(`.calnum[data-i="${i}"]`).value = v[i];
+      if (from !== "range") row.querySelector(`.calrange[data-i="${i}"]`).value = v[i];
+      clearTimeout(calTimer); calTimer = setTimeout(() => api.set_calibration(g, v), 40);
+    };
+    row.querySelectorAll(".calrange").forEach(inp => {
+      const i = +inp.dataset.i;
+      // track: dark -> channel color, with a tick at 100% (the "no change" point)
+      const tint = ["#ff4d4d", "#4ade80", "#60a5fa"][i];
+      inp.style.setProperty("--track",
+        `linear-gradient(90deg,transparent calc(50% - 1px),rgba(255,255,255,.75) calc(50% - 1px),rgba(255,255,255,.75) calc(50% + 1px),transparent calc(50% + 1px)),linear-gradient(90deg,#000,${tint})`);
+      inp.oninput = () => set(i, +inp.value, "range");
+    });
+    row.querySelectorAll(".calnum").forEach(inp => {
+      const i = +inp.dataset.i;
+      inp.oninput = () => { const n = parseInt(inp.value, 10); if (!isNaN(n)) set(i, n, "num"); };
+      inp.onblur = () => { inp.value = gainsOf(g)[i]; };
+      inp.onkeydown = e => { if (e.key === "Enter") inp.blur(); };
+    });
+    row.querySelector(".reset").onclick = async () => {
+      S.calibration = await api.reset_calibration(g); calRows();
+      toast(`${CAL_DEVICES.find(d => d[0] === g)[1]} calibration reset`, { key: "cal", ms: 1800 });
+    };
+  });
+}
+function openCal() {
+  calTest = "FFFFFF"; calTests(); calRows();
+  $("cal").classList.add("on");
+  api.calibrate(calTest);
+  $("calDone").focus();
+}
+function closeCal(fromPython) {
+  $("cal").classList.remove("on");
+  if (!fromPython) api.calibrate(null);
+  $("calOpen").focus();
+}
+$("calOpen").onclick = e => { if (blocked(e.currentTarget)) return; openCal(); };
+$("calDone").onclick = () => { closeCal(); toast("Calibration saved", { key: "cal", ms: 1800 }); };
+$("cal").addEventListener("keydown", e => { if (e.key === "Escape") closeCal(); });
+window.rgbCalClosed = () => closeCal(true);
+
+// ---------- diagnostics (desktop) ----------
+const evText = e => {
+  const bits = [e.kind.replace(/_/g, " ")];
+  const label = e.name || e.file || e.method || e.path || (e.devices ? e.devices.length + " devices" : "");
+  if (label) bits.push(label);
+  if (!e.ok) bits.push("FAILED: " + (e.error || "no details"));
+  else if (e.ms) bits.push((e.ms / 1000).toFixed(1) + "s");
+  return bits.join("  ·  ");
+};
+async function loadDiag() {
+  const d = await api.diag_info(), s = d.summary;
+  $("diagPath").textContent = d.dir;
+  $("diagSum").className = "diagsum" + (s.failed ? " bad" : "");
+  $("diagSum").innerHTML = s.failed
+    ? `<b>${s.failed} of ${s.total}</b> recorded actions failed in the last 24 hours.<br>Latest: ${esc(s.last_error)}`
+    : s.total ? `<b>No problems</b> in the last 24 hours (${s.total} actions recorded).` : "Nothing recorded yet today.";
+  $("diagList").innerHTML = d.recent.length
+    ? d.recent.slice().reverse().map(e => `<div class="ev${e.ok ? "" : " bad"}" title="${esc(e.t)}"><span class="when">${esc(e.t.slice(11, 19))}</span><i></i><span class="what">${esc(evText(e))}</span></div>`).join("")
+    : '<div class="empty">No activity recorded yet.</div>';
+  $("diagBtn").classList.toggle("has-errors", s.failed > 0);
+  $("diagBadge").textContent = s.failed > 9 ? "9+" : s.failed;
+  return d;
+}
+async function openDiag() { $("diagMsg").textContent = ""; $("diag").classList.add("on"); await loadDiag(); $("diagDone").focus(); }
+const closeDiag = () => { $("diag").classList.remove("on"); $("diagBtn").focus(); };
+$("diagBtn").onclick = openDiag;
+$("diagDone").onclick = closeDiag;
+$("diag").addEventListener("keydown", e => { if (e.key === "Escape") closeDiag(); });
+$("diagOpen").onclick = () => { api.open_logs(); toast("Opening the logs folder", { kind: "info", key: "logs" }); };
+$("diagReport").onclick = async () => {
+  $("diagMsg").textContent = "Building…";
+  try { const r = await api.save_report(); $("diagMsg").textContent = "Saved. Its folder is open."; $("diagMsg").title = r.path; toast("Debug report saved", { key: "report" }); }
+  catch (e) { $("diagMsg").textContent = "Couldn't build the report (see the log)."; toast("Couldn't build the report", { kind: "bad" }); }
+};
+// keep the little red count on the button fresh without opening the window
+if (!REMOTE) { setInterval(() => { if (window.pywebview && api) loadDiag().catch(() => {}); }, 60000); }
+
+// ---------- picture editor ----------
+// The maths here mirrors media.py (compose_still / _video_filter) so what you see is what the cooler gets.
+const FW = 854, FH = 480;
+const ED_DEFAULT = { rot: 0, flip: false, fit: "fill", zoom: 1, px: 0, py: 0, bright: 0, contrast: 0, sat: 0 };
+let ed = null;
+const zoomToSlider = z => Math.round(Math.log(z / 0.2) / Math.log(30) * 1000);
+const sliderToZoom = v => 0.2 * Math.pow(30, v / 1000);
+const edOpen = () => $("editor").classList.contains("on");
+
+function openEditor(info) {
+  ed = { id: info.id, kind: info.kind, spec: { ...ED_DEFAULT }, nw: 0, nh: 0 };
+  $("edName").textContent = info.name;
+  $("edHint").style.color = "";
+  $("edHint").textContent = (info.kind === "image" ? "" : "Changes apply to every frame of this " + (info.kind === "video" ? "video" : "animation") + ". ")
+    + "Drag to move, scroll or pinch to zoom.";
+  const img = $("edImg");
+  img.onload = () => { ed.nw = img.naturalWidth; ed.nh = img.naturalHeight; edPaint(); };
+  img.src = info.preview;
+  $("edBg").src = info.preview;
+  $("edApply").disabled = false;
+  $("editor").classList.add("on");
+  edSync();
+  $("edFrame").focus();
+}
+function closeEditor(discard) {
+  if (ed && discard) api.discard_staged(ed.id);
+  $("editor").classList.remove("on");
+  ed = null;
+}
+function place(el, w, h, cx, cy, r90, k) {   // w,h: on-screen size in frame px (after rotation); centre cx,cy
+  const ew = r90 ? h : w, eh = r90 ? w : h;   // the element itself is un-rotated, CSS rotates it
+  el.style.width = ew * k + "px"; el.style.height = eh * k + "px";
+  el.style.left = (cx - ew / 2) * k + "px"; el.style.top = (cy - eh / 2) * k + "px";
+  el.style.transform = `scaleX(${ed.spec.flip ? -1 : 1}) rotate(${ed.spec.rot}deg)`;   // rotate, then mirror
+}
+function edPaint() {
+  if (!ed || !ed.nw) return;
+  const k = $("edFrame").clientWidth / FW, s = ed.spec, r90 = s.rot % 180 !== 0;
+  const rw = r90 ? ed.nh : ed.nw, rh = r90 ? ed.nw : ed.nh;
+  const s0 = s.fit === "fill" ? Math.max(FW / rw, FH / rh) : Math.min(FW / rw, FH / rh);
+  const sc = s0 * s.zoom, img = $("edImg"), bg = $("edBg");
+  place(img, rw * sc, rh * sc, FW / 2 + s.px * FW, FH / 2 + s.py * FH, r90, k);
+  const filt = `brightness(${1 + s.bright}) contrast(${1 + s.contrast}) saturate(${1 + s.sat})`;
+  img.style.filter = filt;
+  bg.style.display = s.fit === "blur" ? "block" : "none";
+  if (s.fit === "blur") {
+    const kf = Math.max(FW / rw, FH / rh) * 1.08;   // slightly oversized so the blur has no dark rim at the edges
+    place(bg, rw * kf, rh * kf, FW / 2, FH / 2, r90, k);
+    bg.style.filter = `blur(${24 * k}px) brightness(.7) ` + filt;
+  }
+}
+function edSync() {
+  const s = ed.spec;
+  $("edZoom").value = zoomToSlider(s.zoom);
+  $("edZoomV").textContent = Math.round(s.zoom * 100) + "%";
+  [["edBright", "bright"], ["edContrast", "contrast"], ["edSat", "sat"]].forEach(([id, key]) => {
+    $(id).value = Math.round(s[key] * 100);
+    $(id + "V").textContent = (s[key] > 0 ? "+" : "") + Math.round(s[key] * 100);
+  });
+  $("edFit").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.f === s.fit));
+  $("edFlip").setAttribute("aria-pressed", s.flip);
+}
+const edPan = (dx, dy) => {
+  const k = $("edFrame").clientWidth / FW, s = ed.spec;
+  s.px = Math.max(-1.5, Math.min(1.5, s.px + dx / (k * FW)));
+  s.py = Math.max(-1.5, Math.min(1.5, s.py + dy / (k * FH)));
+  edPaint();
+};
+const edZoom = z => { ed.spec.zoom = Math.max(0.2, Math.min(6, z)); edSync(); edPaint(); };
+
+(() => {
+  const f = $("edFrame"), ptrs = new Map();
+  let lastDist = 0, lastMid = null;
+  f.addEventListener("pointerdown", e => { f.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); f.classList.add("moving"); lastDist = 0; lastMid = null; });
+  f.addEventListener("pointermove", e => {
+    if (!ed || !ptrs.has(e.pointerId)) return;
+    const prev = ptrs.get(e.pointerId);
+    ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+    const pts = [...ptrs.values()];
+    if (pts.length === 1) edPan(e.clientX - prev[0], e.clientY - prev[1]);
+    else {                                              // two fingers: pinch to zoom + drag
+      const [a, b] = pts, dist = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (lastDist) edZoom(ed.spec.zoom * dist / lastDist);
+      if (lastMid) edPan(mid[0] - lastMid[0], mid[1] - lastMid[1]);
+      lastDist = dist; lastMid = mid;
+    }
+  });
+  const up = e => { ptrs.delete(e.pointerId); lastDist = 0; lastMid = null; if (!ptrs.size) f.classList.remove("moving"); };
+  f.addEventListener("pointerup", up);
+  f.addEventListener("pointercancel", up);
+  f.addEventListener("wheel", e => { if (!ed) return; e.preventDefault(); edZoom(ed.spec.zoom * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+  f.addEventListener("keydown", e => {
+    if (!ed) return;
+    const step = e.shiftKey ? 0.05 : 0.01, k = f.clientWidth / FW;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) { edPan(moves[e.key][0] * FW * k, moves[e.key][1] * FH * k); e.preventDefault(); }
+    else if (e.key === "+" || e.key === "=") { edZoom(ed.spec.zoom * 1.1); e.preventDefault(); }
+    else if (e.key === "-" || e.key === "_") { edZoom(ed.spec.zoom / 1.1); e.preventDefault(); }
+  });
+})();
+$("edZoom").oninput = e => edZoom(sliderToZoom(+e.target.value));
+[["edBright", "bright"], ["edContrast", "contrast"], ["edSat", "sat"]].forEach(([id, key]) =>
+  $(id).oninput = e => { ed.spec[key] = +e.target.value / 100; edSync(); edPaint(); });
+$("edFit").querySelectorAll("button").forEach(b => b.onclick = () => { ed.spec.fit = b.dataset.f; edSync(); edPaint(); });
+$("edRotL").onclick = () => { ed.spec.rot = (ed.spec.rot + 270) % 360; edPaint(); };
+$("edRotR").onclick = () => { ed.spec.rot = (ed.spec.rot + 90) % 360; edPaint(); };
+$("edFlip").onclick = () => { ed.spec.flip = !ed.spec.flip; edSync(); edPaint(); };
+$("edReset").onclick = () => { ed.spec = { ...ED_DEFAULT }; edSync(); edPaint(); };
+$("edCancel").onclick = () => closeEditor(true);
+$("editor").addEventListener("keydown", e => { if (e.key === "Escape") closeEditor(true); });
+$("edApply").onclick = async () => {
+  const id = ed.id;
+  $("edApply").disabled = true;
+  let r;
+  try { r = await api.apply_screen(id, ed.spec); } catch (e) { r = { error: "Couldn't reach the PC" }; }
+  if (r && r.error) {                      // stay open so nothing is lost; say what went wrong
+    $("edApply").disabled = false;
+    $("edHint").textContent = r.error;
+    $("edHint").style.color = "var(--bad)";
+    toast(r.error, { kind: "bad" });
+    return;
+  }
+  closeEditor(false);                      // progress shows in the cooler card ("Converting…")
+  toast("Sending the picture to the cooler…", { kind: "info", key: "cooler" });
+};
+window.rgbEdit = openEditor;               // the PC side calls this when a file is dropped onto the window
+addEventListener("resize", () => { if (ed && edOpen()) edPaint(); });
+
+// ---------- phone dialog (desktop) ----------
+let phoneTimer = null;
+function paintPhone(info) {
+  $("phoneSw").setAttribute("aria-checked", !!info.enabled);
+  $("phoneOn").style.display = info.enabled ? "flex" : "none";
+  if (!info.enabled) { $("phoneWarn").style.display = info.error ? "block" : "none"; $("phoneWarn").textContent = info.error || ""; return; }
+  if ($("qrImg").getAttribute("src") !== info.qr) $("qrImg").src = info.qr;
+  $("qrUrl").textContent = "http://" + info.host;
+  $("apkNote").style.display = info.apk ? "block" : "none";
+  let warn = info.error || "";
+  if (!warn && !info.firewall) warn = "Waiting for Windows permission. Approve the prompt so your phone can connect.";
+  else if (!warn && !info.private) warn = "Windows has this Wi-Fi set to Public, which blocks phones. Set it to Private in Settings › Network & internet › Wi-Fi.";
+  $("phoneWarn").textContent = warn;
+  $("phoneWarn").style.display = warn ? "block" : "none";
+}
+async function openPhone() {
+  $("phone").classList.add("on");
+  paintPhone(await api.phone_info());
+  clearInterval(phoneTimer);
+  phoneTimer = setInterval(async () => { if ($("phone").classList.contains("on")) paintPhone(await api.phone_info()); }, 2000);
+  $("phoneDone").focus();
+}
+function closePhone() { $("phone").classList.remove("on"); clearInterval(phoneTimer); $("phoneBtn").focus(); }
+$("phoneBtn").onclick = openPhone;
+$("apkShow").onclick = e => { e.preventDefault(); api.show_apk(); toast("Showing the Android app file", { kind: "info", key: "apk" }); };
+$("phoneDone").onclick = closePhone;
+$("phone").addEventListener("keydown", e => { if (e.key === "Escape") closePhone(); });
+$("phoneSw").onclick = async () => {
+  const want = $("phoneSw").getAttribute("aria-checked") !== "true";
+  try {
+    const info = await api.set_phone(want);
+    paintPhone(info);
+    if (info.error) toast(info.error, { kind: "bad" });
+    else toast(want ? "Phone access on" : "Phone access off", { key: "phone" });
+  } catch (e) { toast("Couldn't change phone access", { kind: "bad" }); }
+};
+$("phoneNew").onclick = async () => {
+  try { paintPhone(await api.new_phone_token()); toast("New link made. Phones must scan it again", { key: "phone" }); }
+  catch (e) { toast("Couldn't make a new link", { kind: "bad" }); }
+};
+$("phoneCopy").onclick = async () => {
+  const info = await api.phone_info();
+  try { await navigator.clipboard.writeText(info.url); $("phoneCopy").textContent = "Copied"; toast("Link copied", { key: "copy", ms: 1800 }); }
+  catch { $("phoneCopy").textContent = "Couldn't copy"; toast("Couldn't copy the link", { kind: "bad" }); }
+  setTimeout(() => $("phoneCopy").textContent = "Copy link", 1600);
+};
+
+// ---------- phone (remote) behavior ----------
+if (REMOTE) {
+  // keep in sync with the PC (and other phones); don't fight the user while they're dragging a slider
+  let lastPoll = "", uploading = false;
+  const poll = async () => {
+    try {
+      const r = await fetch("/api/poll", { cache: "no-store" });
+      if (r.status === 401) return location.reload();
+      const p = await r.json(), j = JSON.stringify(p);
+      if (j === lastPoll) return;
+      lastPoll = j;
+      if (Date.now() - window.__lastCall() > 2000) {
+        S = p.state; presets = p.presets; render();
+        renderPresets();
+        if (p.profiles && JSON.stringify(p.profiles) !== JSON.stringify(profiles)) { profiles = p.profiles; renderProfiles(); }
+      } else lastPoll = "";   // skipped the state this time; try again next poll
+      window.rgbStatus(p.status[0], p.status[1]);
+      if (p.features && JSON.stringify(p.features) !== JSON.stringify(FEATURES)) { applyFeatures(p.features); buildStatic(); renderProfiles(); render(); }
+      setCooler(p.cooler);
+      if (!uploading) setBusy(p.busy);
+      if (p.msg[0]) setMsg(p.msg[0], p.msg[1]);
+    } catch (e) { lastPoll = ""; window.rgbStatus("PC unreachable", "bad"); }
+  };
+  setInterval(poll, 1500);
+
+  // Android browser (not the app itself): offer the app
+  const inApp = /RGBControlApp/.test(navigator.userAgent);
+  let dismissed = false;
+  try { dismissed = localStorage.getItem("appBannerOff") === "1"; } catch (e) { }
+  if (!inApp && /Android/i.test(navigator.userAgent) && window.RGB_APK && !dismissed) {
+    $("openApp").href = window.RGB_PAIR;
+    $("appBanner").classList.add("on");
+    $("bannerX").onclick = () => {
+      $("appBanner").classList.remove("on");
+      try { localStorage.setItem("appBannerOff", "1"); } catch (e) { }
+    };
+  }
+
+  // no native file dialog on a phone: pick a photo/video and upload it to the PC
+  const fi = document.createElement("input");
+  fi.type = "file"; fi.accept = "image/*,video/*,.gif"; fi.hidden = true;
+  document.body.appendChild(fi);
+  $("choose").onclick = () => fi.click();
+  fi.onchange = async () => {
+    const f = fi.files[0]; fi.value = "";
+    if (!f) return;
+    uploading = true; setBusy("Uploading " + f.name + "…"); setMsg("", "");
+    try {
+      const r = await fetch("/upload?name=" + encodeURIComponent(f.name), { method: "POST", body: f });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Upload failed");
+      setBusy("");
+      if (j.staged) openEditor(j.staged);    // adjust it, then "Put on cooler"
+    } catch (e) { setBusy(""); setMsg(e.message, "bad"); }
+    uploading = false;
+  };
+}
+
+// scale the whole layout up to fill big / maximized windows
+// Binary-search the largest zoom at which the page doesn't scroll, so the whole app always fits
+// (no hard-coded size guesses; works for any window shape, taskbar, or content change).
+let fitQueued = false;
+const scroller = () => document.scrollingElement || document.documentElement;
+const overflowing = () => { const e = scroller(); return e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1; };
+function fit() {
+  const app = document.querySelector(".app");
+  if (REMOTE) { app.style.zoom = ""; return; }    // phones just scroll; the layout is already responsive
+  const fits = z => { app.style.zoom = z; return !overflowing(); };
+  // On big windows only use 60% of the extra room, so a maximized app stays compact and centered
+  // instead of stretching edge to edge. Windows that need <= 1x are untouched.
+  const GROW = 0.6;
+  const soften = z => z > 1 ? 1 + (z - 1) * GROW : z;
+  let lo = 0.6, hi = 3;
+  if (fits(hi)) { app.style.zoom = soften(hi); return; }  // fits even at max zoom
+  if (!fits(lo)) { app.style.zoom = lo; return; }         // tiny window: let it scroll
+  for (let i = 0; i < 12; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid; else hi = mid;
+  }
+  app.style.zoom = soften(lo * 0.985);           // small margin against rounding
+}
+const queueFit = () => { if (!fitQueued) { fitQueued = true; setTimeout(() => { fitQueued = false; fit(); }, 16); } };
+addEventListener("resize", queueFit);
+// Re-fit whenever content changes: size changes, nodes added/removed (preset form, wrapping rows), attribute toggles.
+new ResizeObserver(queueFit).observe(document.querySelector("main"));
+// (watch <main>, not .app: fit() itself changes .app's style and must not re-trigger itself)
+new MutationObserver(queueFit).observe(document.querySelector("main"), { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden"] });
+// Safety net: if anything ever ends up clipped, fix it within half a second.
+setInterval(() => { if (overflowing()) fit(); }, 500);
+fit();
+
+window.addEventListener("pywebviewready", async () => {
+  api = window.pywebview.api;
+  const init = await api.init();
+  S = init.state; presets = init.presets; profiles = init.profiles || [];
+  applyFeatures(init.features);
+  buildStatic(); renderProfiles(); render();
+  window.rgbStatus(init.status[0], init.status[1]);
+  setCooler(init.cooler);
+  if (!REMOTE) loadDiag().catch(() => {});   // shows a red count on the Logs button if something failed recently
+});
+// pywebview fires this itself on the desktop; on a phone there is no pywebview, so fire it once the page is ready
+if (REMOTE) setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 0);
+</script>
+</body>
+</html>

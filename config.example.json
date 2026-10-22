@@ -1,0 +1,10 @@
+{
+  "argb_leds": 60,
+  "ram_expected": null,
+  "ram_same_model": false,
+  "helper_service": null,
+  "group_overrides": {},
+  "preferred_monitor": null,
+  "idle_rescan": true,
+  "icue_quit_on_close": false
+}

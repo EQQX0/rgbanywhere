@@ -1,0 +1,15 @@
+RGB Control
+Copyright (C) 2026 EQQX2
+Licensed under the GNU General Public License, version 3 or (at your option) any later version. See LICENSE.
+
+This program includes and links code from OpenRGB:
+  OpenRGB release_1.0, commit 81bbe18a84c2e507006f19dd252e397e40a56bfe
+  https://gitlab.com/CalcProgrammer1/OpenRGB
+  Copyright (C) Adam Honse and the OpenRGB contributors (see each file's header)
+  Licensed under the GNU General Public License, version 2 or (at your option) any later version.
+  The upstream tree, with its LICENSE and file headers, is in third_party/openrgb/.
+  Files changed here carry a "Modified by EQQX2" comment; see THIRD_PARTY_LICENSES.md for the list.
+
+Other components and their licenses are listed in THIRD_PARTY_LICENSES.md.
+
+This program comes with ABSOLUTELY NO WARRANTY.
