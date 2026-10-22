@@ -27,7 +27,7 @@ The detectors probe the same buses OpenRGB does, including SMBus on the motherbo
 
 ## Download
 
-Get `RGBAnywhere-<version>-win64.zip` from the [Releases page](https://github.com/EQQX0/rgbanywhere/releases), extract it to a folder you will keep, and run `Install.cmd`. The zip has its own Python, so nothing else needs installing. For RAM and some boards, also install [PawnIO](https://pawnio.eu) (`winget install namazso.PawnIO`). Check the SHA-256 in the `.sha256` file if you like.
+Get `RGBAnywhere-<version>-win64.zip` from the [Releases page](https://github.com/EQQX0/rgbanywhere/releases), extract it to a folder you will keep, and run `Install.cmd`. The zip has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. The installer runs `winget install namazso.PawnIO` when the driver is missing, and prints a warning with the link if that fails. The zip does not contain the driver. Check the SHA-256 in the `.sha256` file if you like.
 
 The zip is built on one PC by `package.ps1`. It has not been signed, so Windows SmartScreen may warn you.
 
@@ -47,7 +47,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1      # builds rgbcore.dll and
 powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry and the Start menu shortcut. RAM and some boards also need the [PawnIO](https://pawnio.eu) driver (`winget install namazso.PawnIO`). USB devices work without it.
+`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry and the Start menu shortcut. RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
 
 Add `-Android` to `build.ps1` to build the Android app as well. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
 

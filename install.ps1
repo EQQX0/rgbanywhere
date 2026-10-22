@@ -39,7 +39,17 @@ if (-not (Test-Path (Join-Path $here 'rgbcore.dll'))) {
 }
 # RAM and some boards are reached through the PawnIO driver (a separate, signed driver from https://pawnio.eu).
 if (-not (Get-Service PawnIO -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:ProgramFiles\PawnIO")) {
-    Write-Warning "PawnIO driver not found. RAM and some motherboard lights need it: install it from https://pawnio.eu (or: winget install namazso.PawnIO). USB devices work without it."
+    $ok = $false
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        Write-Host "PawnIO driver not found; installing it with winget (namazso.PawnIO)..."
+        try {
+            winget install --id namazso.PawnIO -e --silent --accept-package-agreements --accept-source-agreements
+            $ok = ($LASTEXITCODE -eq 0) -and ((Get-Service PawnIO -ErrorAction SilentlyContinue) -or (Test-Path "$env:ProgramFiles\PawnIO"))
+        } catch { $ok = $false }
+    }
+    if (-not $ok) {
+        Write-Warning "PawnIO driver is not installed. RAM and some motherboard lights need it: install it from https://pawnio.eu (or: winget install namazso.PawnIO). USB devices work without it."
+    }
 }
 # 3. Default config.json (only if absent): generic settings, no vendor workarounds
 $cfg = Join-Path $here 'config.json'
