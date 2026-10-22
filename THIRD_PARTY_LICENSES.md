@@ -21,13 +21,13 @@ RGB Control as a whole is released under the GNU General Public License, version
 
 | Component | Used for | License | Source |
 |-----------|----------|---------|--------|
-| PawnIOLib.dll (Copyright (C) 2023 namazso) | talking to the PawnIO driver | LGPL-2.1-or-later (per the header in PawnIOLib.h) | https://github.com/namazso/PawnIOLib (archived, moved to https://github.com/namazso/PawnIO) |
+| PawnIOLib.dll (Copyright (C) 2023 namazso) | talking to the PawnIO driver | LGPL-2.1-or-later (stated in the `PawnIOLib.h` header; the archived PawnIOLib repository page names no license and points to the main PawnIO repository) | https://github.com/namazso/PawnIOLib (archived, moved to https://github.com/namazso/PawnIO) |
 | PawnIO modules `*.bin` | SMBus / LPC access modules | LGPL-2.1 (its COPYING file; "or later" not checked) | https://github.com/namazso/PawnIO.Modules |
 | hidapi-hotplug.dll | USB HID access | hidapi licenses (BSD-3-Clause / GPL-3.0 / original hidapi license) | https://gitlab.com/CalcProgrammer1/hidapi (OpenRGB's hotplug fork) |
 | libusb-1.0.dll | USB access | LGPL-2.1-or-later | https://libusb.info |
 | libwinpthread-1.dll | MinGW-w64 threading runtime, copied from your toolchain | MIT / ZPL-2.1 | https://www.mingw-w64.org |
 
-The PawnIO **driver** is not distributed here. Install it from https://pawnio.eu and read its license there. Upstream describes the driver as GPL-2.0 or later with a linking exception. The LGPL-2.1 text and notes for the PawnIO files are in `third_party/openrgb/dependencies/PawnIO/`.
+The PawnIO **driver** is not distributed here. Setup installs it with `winget install namazso.PawnIO`. Its repository (https://github.com/namazso/PawnIO) lists GPL-2.0 (version 2 or later) with an exception for combining it with LGPL programs and with modules that talk to it only through its device IO-control interface. pawnio.eu states no redistribution terms, so this project does not bundle the driver or its installer. The LGPL-2.1 text and notes for the bundled PawnIO files are in `third_party/openrgb/dependencies/PawnIO/`.
 
 Code compiled into `rgbcore.dll` from `third_party/openrgb/`: nlohmann/json (MIT), CRCpp (`CRC.h`, BSD-3-Clause, Copyright Daniel Bahr), libe131 (Apache-2.0, Copyright 2016 Hugo Hromic; Apache-2.0 is compatible with GPL-3.0), `qt/hsv.cpp` (MIT, Copyright 2013 Martin Mitas), `dependencies/NVFC` (NVIDIA API wrapper, license as in OpenRGB) and the AMD Display Library headers (MIT, Copyright AMD). License text is in each file's header. The hidapi and libusb headers describe the DLLs above. Other folders in that directory (hueplusplus, libe131, mdns, stb, mbedtls, and so on) are part of the upstream tree but are not compiled into `rgbcore.dll`.
 
