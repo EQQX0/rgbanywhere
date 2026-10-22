@@ -19,11 +19,19 @@ Tested on one PC only (Windows 11):
 - Logitech G515 RAPID TKL keyboard and G502 HERO mouse (via Lightspeed receiver)
 - DeepCool LT360 VISION cooler screen
 
-Only the Corsair, ASUS Aura USB and Logitech controllers are compiled in (`CONTROLLER_DIRS` in `core/CMakeLists.txt`). Add a folder name from `third_party/openrgb/Controllers/` to that list and rebuild to support other brands.
+The core compiles in 190 of OpenRGB's controller folders: keyboards, mice, motherboards, GPUs, RAM, fans, coolers and strips from many brands. Only the hardware above has been tried here. The folders left out are in `core/exclude.cmake` (Philips Hue needs extra libraries; two are Linux-only). Pass `-Controllers "CorsairDRAMController;AsusAuraUSBController"` to `build.ps1` for a smaller build.
+
+The detectors probe the same buses OpenRGB does, including SMBus on the motherboard. Close OpenRGB and iCUE before you start this app.
 
 **Install on a second PC is untested.** The embedded core has also not been run against real hardware from this repository's final tree. Expect problems and read `logs\`.
 
-## Build and install
+## Download
+
+Get `RGBAnywhere-<version>-win64.zip` from the [Releases page](https://github.com/EQQX0/rgbanywhere/releases), extract it to a folder you will keep, and run `Install.cmd`. The zip has its own Python, so nothing else needs installing. For RAM and some boards, also install [PawnIO](https://pawnio.eu) (`winget install namazso.PawnIO`). Check the SHA-256 in the `.sha256` file if you like.
+
+The zip is built on one PC by `package.ps1`. It has not been signed, so Windows SmartScreen may warn you.
+
+## Build and install from source
 
 You need Windows 10 or 11, Python 3.10+ (tick "Add to PATH") and a C++ toolchain:
 

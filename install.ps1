@@ -1,4 +1,4 @@
-﻿# Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
 # RGB Control installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
 # Installs Python packages, builds the embedded OpenRGB core if needed, then sets up the login tasks, the startup entry and the Start menu shortcut.
 # Asks for admin once (the lighting daemon needs it to reach RAM lights and some boards).
@@ -16,16 +16,22 @@ if (-not $admin) {
 }
 $user = "$env:USERDOMAIN\$env:USERNAME"   # the elevated shell is still this user
 
-# 1. Python
-$py = (Get-Command python -ErrorAction SilentlyContinue).Source
-if (-not $py) { $py = (& py -3 -c "import sys;print(sys.executable)" 2>$null) }
-if (-not $py) { throw "Python 3.10+ not found. Install it from python.org (tick 'Add to PATH'), then run this again." }
-$pyw = Join-Path (Split-Path $py) 'pythonw.exe'
-Write-Host "Python: $py"
-& $py -m pip install --upgrade -r (Join-Path $here 'requirements.txt')
-if ($LASTEXITCODE) { throw "pip install failed" }
+# 1. Python. A release zip carries its own (python\ next to this script) with every package installed; a source checkout uses yours.
+$bundled = Join-Path $here 'python\pythonw.exe'
+if (Test-Path $bundled) {
+    $py = Join-Path $here 'python\python.exe'; $pyw = $bundled
+    Write-Host "Using the bundled Python: $py"
+} else {
+    $py = (Get-Command python -ErrorAction SilentlyContinue).Source
+    if (-not $py) { $py = (& py -3 -c "import sys;print(sys.executable)" 2>$null) }
+    if (-not $py) { throw "Python 3.10+ not found. Install it from python.org (tick 'Add to PATH'), then run this again." }
+    $pyw = Join-Path (Split-Path $py) 'pythonw.exe'
+    Write-Host "Python: $py"
+    & $py -m pip install --upgrade -r (Join-Path $here 'requirements.txt')
+    if ($LASTEXITCODE) { throw "pip install failed" }
+}
 
-# 2. Embedded OpenRGB core (rgbcore.dll). Build it from source with build.ps1 if it is not here yet.
+# 2. Embedded OpenRGB core (rgbcore.dll). A release zip has it; a source checkout builds it with build.ps1.
 if (-not (Test-Path (Join-Path $here 'rgbcore.dll'))) {
     Write-Host "rgbcore.dll not found; building it (needs MinGW-w64 GCC, CMake and Ninja, see README.md)..."
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'build.ps1')
@@ -35,7 +41,6 @@ if (-not (Test-Path (Join-Path $here 'rgbcore.dll'))) {
 if (-not (Get-Service PawnIO -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:ProgramFiles\PawnIO")) {
     Write-Warning "PawnIO driver not found. RAM and some motherboard lights need it: install it from https://pawnio.eu (or: winget install namazso.PawnIO). USB devices work without it."
 }
-
 # 3. Default config.json (only if absent): generic settings, no vendor workarounds
 $cfg = Join-Path $here 'config.json'
 if (-not (Test-Path $cfg)) { [IO.File]::WriteAllText($cfg, '{ "argb_leds": 60 }', (New-Object Text.UTF8Encoding $false)) }

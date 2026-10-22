@@ -116,7 +116,14 @@ def serve():
     finally:
         if helper:
             rgb.start_helper()
-    threading.Event().wait()  # until the task is stopped
+    try:
+        threading.Event().wait()  # until the task is stopped
+    except KeyboardInterrupt:
+        pass
+    try:
+        _core.shutdown()
+    finally:
+        os._exit(0)  # the core's background threads would keep the process alive
 
 
 def main():

@@ -7,7 +7,7 @@
 #
 # Needs: a MinGW-w64 GCC (winget install BrechtSanders.WinLibs.POSIX.UCRT), CMake and Ninja. Python's `pip install cmake ninja` works.
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-param([switch]$Android, [switch]$Clean)
+param([switch]$Android, [switch]$Clean, [switch]$KeepGoing, [string]$Controllers = 'ALL')
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -28,9 +28,9 @@ Need ninja 'Install it with: python -m pip install ninja'
 $src = Join-Path $here 'core'
 $out = Join-Path $here 'build'
 if ($Clean -and (Test-Path $out)) { Remove-Item $out -Recurse -Force }
-cmake -S $src -B $out -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S $src -B $out -G Ninja -DCMAKE_BUILD_TYPE=Release "-DRGBCORE_CONTROLLERS=$Controllers"
 if ($LASTEXITCODE) { throw 'cmake configure failed' }
-cmake --build $out -j
+if ($KeepGoing) { cmake --build $out -- -k 0 } else { cmake --build $out -j }
 if ($LASTEXITCODE) { throw 'build failed' }
 
 # Runtime files the app loads from its own folder: the DLL, the DLLs it links, and the PawnIO modules.

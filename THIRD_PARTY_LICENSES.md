@@ -9,7 +9,7 @@ RGB Control as a whole is released under the GNU General Public License, version
   https://gitlab.com/CalcProgrammer1/OpenRGB/-/tree/81bbe18a84c2e507006f19dd252e397e40a56bfe
 - Copyright: Adam Honse and the OpenRGB contributors. The author of each file is named in that file's header.
 - License: GNU GPL version 2 or later (`SPDX-License-Identifier: GPL-2.0-or-later` in the headers). The upstream `LICENSE` file is kept unchanged at `third_party/openrgb/LICENSE`.
-- Where: the complete upstream tree is in `third_party/openrgb/`. `build.ps1` compiles the device core, 95 of its source files, plus controllers for the hardware named in `core/CMakeLists.txt`, into `rgbcore.dll`. The list of compiled files is the `CONTROLLER_DIRS` and source list in that file.
+- Where: the complete upstream tree is in `third_party/openrgb/`. `build.ps1` compiles the device core plus 190 of the controller folders into `rgbcore.dll`. The compiled files are the source list in `core/CMakeLists.txt` and the folders not listed in `core/exclude.cmake`. Controller files carry their own headers, and the ones read so far are GPL-2.0-or-later; the full file-by-file license audit was done for the first 95 files only, so re-run it before relying on the wider set.
 - Changes made to OpenRGB files (each one carries a "Modified by EQQX2" comment in the file; headers and copyright lines are untouched):
   - `third_party/openrgb/i2c_smbus/Windows/i2c_smbus_pawnio.cpp`: finds the PawnIO `.bin` modules next to `rgbcore.dll` instead of next to the host executable.
   - `third_party/openrgb/wmi/wmi.cpp`: no COM initialisation in a static initialiser (it deadlocks inside a DLL); COM is initialised as multithreaded and started from `rgb_init()`.
@@ -29,7 +29,7 @@ RGB Control as a whole is released under the GNU General Public License, version
 
 The PawnIO **driver** is not distributed here. Install it from https://pawnio.eu and read its license there.
 
-Header-only code compiled into `rgbcore.dll` from `third_party/openrgb/dependencies/`: nlohmann/json (MIT) and CRCpp (`CRC.h`, BSD-3-Clause, Copyright Daniel Bahr; license text in the header). The hidapi and libusb headers describe the DLLs above. Other folders in that directory (hueplusplus, libe131, mdns, stb, mbedtls, and so on) are part of the upstream tree but are not compiled into `rgbcore.dll`.
+Code compiled into `rgbcore.dll` from `third_party/openrgb/`: nlohmann/json (MIT), CRCpp (`CRC.h`, BSD-3-Clause, Copyright Daniel Bahr), libe131 (Apache-2.0, Copyright 2016 Hugo Hromic; Apache-2.0 is compatible with GPL-3.0), `qt/hsv.cpp` (MIT, Copyright 2013 Martin Mitas), `dependencies/NVFC` (NVIDIA API wrapper, license as in OpenRGB) and the AMD Display Library headers (MIT, Copyright AMD). License text is in each file's header. The hidapi and libusb headers describe the DLLs above. Other folders in that directory (hueplusplus, libe131, mdns, stb, mbedtls, and so on) are part of the upstream tree but are not compiled into `rgbcore.dll`.
 
 ## Python packages (installed with pip, not included)
 
@@ -59,3 +59,7 @@ These need a person to confirm. See the compliance checklist in `README.md`.
 
 - Exact license wording of the prebuilt PawnIO and hidapi binaries should be checked against their upstream repositories before a public release.
 - The FFmpeg build inside imageio-ffmpeg and libheif inside pillow-heif come from pip; this project does not redistribute them.
+
+## Release zip
+
+The release zip adds the unmodified embeddable Python from python.org (PSF-2.0, `python\` folder) and the pip packages listed above installed under `python\Lib\site-packages`, each with its `*.dist-info` license files. `SOURCE.txt` in the zip points to this repository, tag `v<version>`, as the corresponding source.

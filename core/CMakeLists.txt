@@ -1,17 +1,32 @@
 # Build script for rgbcore.dll: OpenRGB's device core (pinned in ../third_party/openrgb) plus a small C API.
 # Original file by EQQX2, 2026. GPL-3.0-or-later (see ../LICENSE). OpenRGB sources keep their own headers.
 cmake_minimum_required(VERSION 3.20)
+# Hundreds of include directories overflow the Windows command line, so pass them in a response file.
+set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
+set(CMAKE_C_USE_RESPONSE_FILE_FOR_INCLUDES ON)
+set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES ON)
 project(rgbcore CXX C)
 set(CMAKE_CXX_STANDARD 17)
 set(OR ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/openrgb)
 
-# Controllers this app needs (see README / NOTICE). Add more directories here to support other hardware.
-set(CONTROLLER_DIRS
-    CorsairDRAMController
-    AsusAuraUSBController
-    LogitechController
-)
-
+# Which OpenRGB controller directories to compile. Default: every directory in third_party/openrgb/Controllers
+# except the ones in RGBCORE_EXCLUDE (network/Linux-only/needs extra libraries). Override on the command line:
+#   -DRGBCORE_CONTROLLERS="CorsairDRAMController;AsusAuraUSBController"   (a smaller, faster build)
+set(RGBCORE_CONTROLLERS "ALL" CACHE STRING "Controller directories to build, or ALL")
+include(${CMAKE_CURRENT_SOURCE_DIR}/exclude.cmake)
+if(RGBCORE_CONTROLLERS STREQUAL "ALL")
+    file(GLOB all_dirs RELATIVE ${OR}/Controllers ${OR}/Controllers/*)
+    set(CONTROLLER_DIRS "")
+    foreach(d ${all_dirs})
+        if(IS_DIRECTORY ${OR}/Controllers/${d} AND NOT d IN_LIST RGBCORE_EXCLUDE)
+            list(APPEND CONTROLLER_DIRS ${d})
+        endif()
+    endforeach()
+else()
+    set(CONTROLLER_DIRS ${RGBCORE_CONTROLLERS})
+endif()
+list(LENGTH CONTROLLER_DIRS n_ctrl)
+message(STATUS "rgbcore: building ${n_ctrl} controller directories")
 set(CTRL_SRC "")
 foreach(d ${CONTROLLER_DIRS})
     file(GLOB_RECURSE s CONFIGURE_DEPENDS ${OR}/Controllers/${d}/*.cpp)
@@ -25,6 +40,8 @@ foreach(f ${CTRL_SRC})
     endif()
 endforeach()
 set(CTRL_SRC ${KEEP})
+# SinowealthControllerDetect.cpp #includes GenesisXenon200Controller.cpp itself; compiling it again duplicates every symbol.
+list(FILTER CTRL_SRC EXCLUDE REGEX "GenesisXenon200Controller/GenesisXenon200Controller\\.cpp$")
 
 set(CORE_SRC
     ${OR}/DetectionManager.cpp ${OR}/JsonUtils.cpp ${OR}/LogManager.cpp ${OR}/MathUtils.cpp
@@ -40,6 +57,8 @@ set(CORE_SRC
     ${OR}/super_io/super_io_pawnio.cpp
     ${OR}/AutoStart/AutoStart.cpp ${OR}/AutoStart/AutoStart-Windows.cpp
     ${OR}/KeyboardLayoutManager/KeyboardLayoutManager.cpp
+    ${OR}/dependencies/NVFC/nvapi.cpp ${OR}/i2c_smbus/Windows/i2c_smbus_amdadl.cpp ${OR}/i2c_smbus/Windows/i2c_smbus_nvapi.cpp
+    ${OR}/scsiapi/scsiapi_windows.c ${OR}/qt/hsv.cpp ${OR}/dependencies/libe131/src/e131.c
     ${OR}/RGBController/RGBController.cpp ${OR}/RGBController/RGBController_Dummy.cpp
     ${OR}/RGBController/RGBControllerKeyNames.cpp ${OR}/RGBController/RGBController_Network.cpp
     ${OR}/RGBController/RGBController_Virtual.cpp
@@ -55,7 +74,7 @@ target_include_directories(rgbcore PRIVATE
     ${OR}/dmiinfo ${OR}/net_port ${OR}/pci_ids ${OR}/scsiapi ${OR}/serial_port ${OR}/super_io ${OR}/AutoStart
     ${OR}/KeyboardLayoutManager ${OR}/SPDAccessor ${OR}/startup ${OR}/wmi ${OR}/SuspendResume
     ${OR}/dependencies/json ${OR}/dependencies/httplib ${OR}/dependencies/CRCpp ${OR}/dependencies/stb
-    ${OR}/dependencies/PawnIO ${OR}/dependencies/hidapi-hotplug-win/include ${OR}/dependencies/libusb-1.0.27/include
+    ${OR}/qt ${OR}/dependencies/PawnIO ${OR}/dependencies/NVFC ${OR}/dependencies/display-library/include ${OR}/dependencies/mbedtls-3.2.1/include ${OR}/dependencies/hidapi-hotplug-win/include ${OR}/dependencies/libusb-1.0.27/include
     ${OR}/dependencies/mdns ${OR}/dependencies/hueplusplus-1.2.0/include ${OR}/dependencies/libe131/src)
 foreach(d ${CONTROLLER_DIRS})
     file(GLOB_RECURSE hs ${OR}/Controllers/${d}/*.h)

@@ -45,3 +45,7 @@ __pycache__/
 .idea/
 nircmd.exe
 HANDOFF.md
+
+# Release packaging
+dist/
+build_all.log
