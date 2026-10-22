@@ -21,6 +21,8 @@ from collections import namedtuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 47823
+TASK_LIGHTING = "RGB Anywhere Lighting"  # elevated scheduled tasks (own names, so they never replace another install's tasks)
+TASK_RESCAN = "RGB Anywhere Rescan"
 TOKEN_FILE = os.path.join(HERE, "rgbd.token")
 
 

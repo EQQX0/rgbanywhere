@@ -9,7 +9,7 @@ from win32com.shell import shell
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PYW = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-LNK = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\RGB Control.lnk")
+LNK = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs\RGB Anywhere.lnk")
 
 link = pythoncom.CoCreateInstance(shell.CLSID_ShellLink, None, pythoncom.CLSCTX_INPROC_SERVER, shell.IID_IShellLink)
 link.SetPath(PYW)

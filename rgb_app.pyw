@@ -822,7 +822,7 @@ class App:
             self.monitors_off(wake_lights=True)
 
     def rescan(self, retry=False):
-        """Re-detect devices via the elevated "RGB Rescan" task (rgbd.py --rescan), then reconnect.
+        """Re-detect devices via the elevated "RGB Anywhere Rescan" task (rgbd.py --rescan), then reconnect.
 
         Asked again within RESCAN_GAP of the last one, it waits out the gap first; asking more often than
         that changes nothing. `retry` marks a rescan the app repeats by itself (see after_rescan).
@@ -852,10 +852,10 @@ class App:
         self.set_status("Rescanning…", "warn")
         self.rescan_check = True
         self.client = None
-        r = subprocess.run(["schtasks", "/run", "/tn", "RGB Rescan"], capture_output=True, text=True, errors="ignore",
+        r = subprocess.run(["schtasks", "/run", "/tn", rgb.rgbcore_client.TASK_RESCAN], capture_output=True, text=True, errors="ignore",
                            creationflags=NO_WINDOW)
         ok = r.returncode == 0
-        log.info("rescan: schtasks /run 'RGB Rescan' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
+        log.info("rescan: schtasks /run 'RGB Anywhere Rescan' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
         applog.event("openrgb_rescan", ok=ok, error=None if ok else (r.stdout + r.stderr).strip()[:200])
 
         def later():
@@ -863,7 +863,7 @@ class App:
             # connecting while OpenRGB is still down would start a second copy of it.
             time.sleep(3)
             for _ in range(90):  # up to 45 s: the task also stops and starts DeepCool's helper around the restart
-                q = subprocess.run(["schtasks", "/query", "/tn", "RGB Rescan", "/fo", "csv", "/nh"], capture_output=True,
+                q = subprocess.run(["schtasks", "/query", "/tn", rgb.rgbcore_client.TASK_RESCAN, "/fo", "csv", "/nh"], capture_output=True,
                                    text=True, errors="ignore", creationflags=NO_WINDOW)
                 if "Running" not in q.stdout:
                     break

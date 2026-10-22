@@ -1,10 +1,10 @@
 """Lighting daemon: hosts the embedded OpenRGB device core (rgbcore.dll) in an elevated process.
 
 Reaching RAM and some boards over SMBus needs admin, the app does not, so the app talks to this daemon over
-a localhost socket (token in rgbd.token). Run by the "RGB Lighting" scheduled task (highest privileges).
+a localhost socket (token in rgbd.token). Run by the "RGB Anywhere Lighting" scheduled task (highest privileges).
 
   python rgbd.py            serve (and apply the saved colours once the devices are found)
-  python rgbd.py --rescan   re-detect devices in the running daemon (the "RGB Rescan" task); starts it if absent
+  python rgbd.py --rescan   re-detect devices in the running daemon (the "RGB Anywhere Rescan" task); starts it if absent
 
 Copyright (C) 2026 EQQX2
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -98,7 +98,7 @@ def serve():
         _log.info("daemon already running; exiting")
         return
     if not rgb.is_elevated():
-        _log.warning("not elevated: RAM and some boards will not be found. Run it from the 'RGB Lighting' task.")
+        _log.warning("not elevated: RAM and some boards will not be found. Run it from the 'RGB Anywhere Lighting' task.")
     _token = secrets.token_hex(24)
     with open(rc.TOKEN_FILE, "w", encoding="ascii") as f:
         f.write(_token)
@@ -132,7 +132,7 @@ def main():
         if reachable():
             rc.RemoteBackend(timeout=300).request("rescan")
         else:  # nothing running: start the daemon through its task (it detects on start-up anyway)
-            subprocess.run(["schtasks", "/run", "/tn", "RGB Lighting"], creationflags=0x08000000)
+            subprocess.run(["schtasks", "/run", "/tn", rc.TASK_LIGHTING], creationflags=0x08000000)
         return
     serve()
 

@@ -19,7 +19,7 @@ Tested on one PC only (Windows 11):
 - Logitech G515 RAPID TKL keyboard and G502 HERO mouse (via Lightspeed receiver)
 - DeepCool LT360 VISION cooler screen
 
-The core compiles in 190 of OpenRGB's controller folders: keyboards, mice, motherboards, GPUs, RAM, fans, coolers and strips from many brands. Only the hardware above has been tried here. The folders left out are in `core/exclude.cmake` (Philips Hue needs extra libraries; two are Linux-only). Pass `-Controllers "CorsairDRAMController;AsusAuraUSBController"` to `build.ps1` for a smaller build.
+The core compiles in 187 of OpenRGB's 196 controller folders: keyboards, mice, motherboards, GPUs, RAM, fans, coolers and strips from many brands. Only the hardware above has been tried here. The nine folders left out are in `core/exclude.cmake`. Philips Hue needs extra libraries and two are Linux-only. Four contain GPL-2.0-only code (HID lamp arrays, Mountain keyboards, Gigabyte RGB Fusion2 USB, Lian Li hubs) and two contain files with no license header (Sinowealth keyboards, ASUS Aura Core laptops), so they cannot go into a GPL-3.0 build. Pass `-Controllers "CorsairDRAMController;AsusAuraUSBController"` to `build.ps1` for a smaller build.
 
 The detectors probe the same buses OpenRGB does, including SMBus on the motherboard. Close OpenRGB and iCUE before you start this app.
 
@@ -47,7 +47,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1      # builds rgbcore.dll and
 powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Lighting" (the elevated daemon, at logon) and "RGB Rescan", adds the startup entry and the Start menu shortcut. RAM and some boards also need the [PawnIO](https://pawnio.eu) driver (`winget install namazso.PawnIO`). USB devices work without it.
+`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry and the Start menu shortcut. RAM and some boards also need the [PawnIO](https://pawnio.eu) driver (`winget install namazso.PawnIO`). USB devices work without it.
 
 Add `-Android` to `build.ps1` to build the Android app as well. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
 
@@ -90,7 +90,7 @@ python rgb.py --restart          # re-detect devices
 
 ## Troubleshooting
 
-Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Rescan"`.
+Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
 

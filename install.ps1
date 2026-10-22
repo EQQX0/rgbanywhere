@@ -56,18 +56,18 @@ function New-RgbTask($name, $arg, $logon, $unlimited) {
     Register-ScheduledTask @p | Out-Null
     Write-Host "Task '$name' registered"
 }
-# "RGB Lighting" is the elevated lighting daemon (rgbd.py); "RGB Rescan" asks it to re-detect devices.
-New-RgbTask 'RGB Lighting' ('"{0}"' -f (Join-Path $here 'rgbd.py')) $true $true
-New-RgbTask 'RGB Rescan'   ('"{0}" --rescan' -f (Join-Path $here 'rgbd.py')) $false $false
+# "RGB Anywhere Lighting" is the elevated lighting daemon (rgbd.py); "RGB Anywhere Rescan" asks it to re-detect devices.
+New-RgbTask 'RGB Anywhere Lighting' ('"{0}"' -f (Join-Path $here 'rgbd.py')) $true $true
+New-RgbTask 'RGB Anywhere Rescan'   ('"{0}" --rescan' -f (Join-Path $here 'rgbd.py')) $false $false
 
 # 5. Start the app at login (hidden in the tray) and make the Start menu shortcut
 if (-not $NoStartup) {
     $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     # HKCU of the elevated shell is the same user's hive
-    Set-ItemProperty $run -Name 'RGB Control' -Value ('"{0}" "{1}" --tray' -f $pyw, (Join-Path $here 'rgb_app.pyw'))
+    Set-ItemProperty $run -Name 'RGB Anywhere' -Value ('"{0}" "{1}" --tray' -f $pyw, (Join-Path $here 'rgb_app.pyw'))
     Write-Host "Startup entry set"
 }
 & $py (Join-Path $here 'make_shortcut.py')
 
-Write-Host "`nDone. Start 'RGB Control' from the Start menu, or run:  schtasks /run /tn `"RGB Lighting`""
+Write-Host "`nDone. Start 'RGB Anywhere' from the Start menu, or run:  schtasks /run /tn `"RGB Anywhere Lighting`""
 Write-Host "Optional per-PC settings (monitor, vendor workarounds, device overrides) go in config.json - see README.md."

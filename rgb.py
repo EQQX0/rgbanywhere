@@ -140,7 +140,7 @@ def color_for(state, group):
 
 
 def connect(wait=60):
-    """Connect to the lighting daemon (rgbd.py), starting it through its elevated "RGB Lighting" task if needed.
+    """Connect to the lighting daemon (rgbd.py), starting it through its elevated "RGB Anywhere Lighting" task if needed.
 
     The daemon is elevated because RAM and some boards are reached over SMBus; this process need not be.
     """
@@ -152,8 +152,8 @@ def connect(wait=60):
         except Exception as e:
             if attempt == 0:
                 _log.warning("lighting daemon not reachable (%s: %s); starting it", type(e).__name__, e)
-                r = _quiet("schtasks", "/run", "/tn", "RGB Lighting")
-                _log.info("schtasks /run 'RGB Lighting' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
+                r = _quiet("schtasks", "/run", "/tn", rgbcore_client.TASK_LIGHTING)
+                _log.info("schtasks /run 'RGB Anywhere Lighting' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
             time.sleep(1)
     _log.error("Could not connect to the lighting daemon within %ds", wait)
     applog.event("core_connect", ok=False, error="could not connect within %ds" % wait)
