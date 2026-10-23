@@ -16,9 +16,9 @@ Fixed:
 9. fetch-openrgb.ps1: TLS 1.2, either zip layout, fetched-from.txt; openrgb-python pinned to 0.3.8.
 10. --diagnose works without OpenRGB or the daemon and gives one hint per failure.
 11. THIRD_PARTY_LICENSES.md checked against upstream where possible.
-12. After a rescan the app follows the daemon, not schtasks' English "Running"; a renumbering notice is read before any write; app worker race fixed.
+12. After a rescan the app follows the daemon, not schtasks' English "Running"; a renumbering notice is read before any write; app worker race fixed; presets, profiles and service states checked.
 
-Tests: 96, all passing on Linux (Python 3.10 and 3.13) and in CI on Windows (`python -m unittest discover -s tests -v`). Files: test_sdk_backend, test_sdk_failures, test_apply, test_argb, test_diag, test_repo, test_rgbctl.
+Tests: 99, all passing on Linux (Python 3.10 and 3.13) and in CI on Windows (`python -m unittest discover -s tests -v`). Files: test_sdk_backend, test_sdk_failures, test_apply, test_argb, test_diag, test_repo, test_rgbctl, test_applog.
 
 Unverified on hardware: everything touching OpenRGB.exe, PawnIO, RAM, ARGB sizing, colours, monitors-off, the job object, leftover-process cleanup, Setup's update path, package.ps1 output.
 
@@ -65,6 +65,10 @@ These change lights or processes:
 17. 4e438f8 Device-list notice read before resolving a device.
 18. a3c7b94 rgbctl tests.
 19. 9218eea Daemon reports another program on its port.
+20. 8b446d9 sc query state read by value (see Needs the owner 6).
+21. d323fd3 README message table.
+22. eb672cd Presets and profiles validated on restore and apply.
+23. 9d38984 Debug report adds OpenRGB.json and Configuration.json.
 
 ## Next
 
