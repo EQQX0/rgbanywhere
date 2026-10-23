@@ -98,32 +98,34 @@ class RedactTest(unittest.TestCase):
 class FoldersTest(unittest.TestCase):
     """Where the app, the elevated daemon and a source checkout keep their files (applog.folders)."""
     ENV = {"ProgramFiles": "/pf", "LOCALAPPDATA": "/home/u/local"}
+    j = staticmethod(os.path.join)  # the separator differs between Windows and the rest
 
     def test_installed_in_program_files(self):
-        here = "/pf/RGB Anywhere"
+        j = self.j
+        here = j("/pf", "RGB Anywhere")
         app = applog.folders(here, self.ENV, is_admin=False)
         self.assertTrue(app["protected"])
-        self.assertEqual(app["data"], "/home/u/local/RGB Anywhere")  # settings: the user's own folder
-        self.assertEqual(app["logs"], "/home/u/local/RGB Anywhere/logs")
+        data = j("/home/u/local", "RGB Anywhere")
+        self.assertEqual(app["data"], data)  # settings: the user's own folder
+        self.assertEqual(app["logs"], j(data, "logs"))
         daemon = applog.folders(here, self.ENV, is_admin=True)
-        self.assertEqual(daemon["logs"], "/pf/RGB Anywhere/logs")  # never a folder a normal process controls
-        self.assertEqual(daemon["data"], app["data"])  # it reads the same settings
-        self.assertEqual(app["events"], sorted(["/home/u/local/RGB Anywhere/logs/events.jsonl",
-                                                "/pf/RGB Anywhere/logs/events.jsonl"]))
+        self.assertEqual(daemon["logs"], j(here, "logs"))  # never a folder a normal process controls
+        self.assertEqual(daemon["data"], data)  # it reads the same settings
+        self.assertEqual(app["events"], sorted([j(data, "logs", "events.jsonl"), j(here, "logs", "events.jsonl")]))
 
     def test_source_checkout_keeps_everything_together(self):
-        here = "/home/u/src/rgbanywhere"
+        here = self.j("/home/u", "src", "rgbanywhere")
         f = applog.folders(here, self.ENV, is_admin=True)
         self.assertFalse(f["protected"])
-        self.assertEqual((f["data"], f["logs"]), (here, here + "/logs"))
-        self.assertEqual(applog.folders(here, self.ENV, is_admin=False)["logs"], here + "/logs")
+        self.assertEqual((f["data"], f["logs"]), (here, self.j(here, "logs")))
+        self.assertEqual(applog.folders(here, self.ENV, is_admin=False)["logs"], self.j(here, "logs"))
 
     def test_a_folder_that_only_starts_like_program_files_is_not_protected(self):
-        self.assertFalse(applog.folders("/pf-evil/RGB Anywhere", self.ENV, is_admin=True)["protected"])
+        self.assertFalse(applog.folders(self.j("/pf-evil", "RGB Anywhere"), self.ENV, is_admin=True)["protected"])
 
     def test_overrides(self):
-        f = applog.folders("/pf/RGB Anywhere", dict(self.ENV, RGB_DATA_DIR="/d", RGB_LOG_DIR="/l"), is_admin=True)
-        self.assertEqual((f["data"], f["logs"], f["events"]), ("/d", "/l", ["/l/events.jsonl"]))
+        f = applog.folders(self.j("/pf", "RGB Anywhere"), dict(self.ENV, RGB_DATA_DIR="/d", RGB_LOG_DIR="/l"), is_admin=True)
+        self.assertEqual((f["data"], f["logs"], f["events"]), ("/d", "/l", [self.j("/l", "events.jsonl")]))
 
 
 if __name__ == "__main__":
