@@ -93,12 +93,14 @@ def hints(d):
         out.append("The PawnIO driver service is %s. Restart the PC, or run 'sc start PawnIO' as admin, then press Rescan." % svc)
     if not d["pawnio"]["lib"] or not d["pawnio"]["modules"]:
         out.append("PawnIOLib.dll or the PawnIO .bin modules are missing next to rgbcore.dll. Reinstall RGB Anywhere.")
+    # RAM sits on the motherboard's SMBus, which only PawnIO opens; the NVIDIA/AMD GPU buses don't reach it.
+    board = [b for b in buses or [] if b["name"].startswith("PawnIO")]
     if buses is None:
         out.append("rgbcore.dll is older than this app and reports no SMBus details. Rebuild it with build.ps1 or reinstall.")
-    elif not buses and d["elevated"] and svc == "RUNNING":
-        out.append("No SMBus bus could be opened even though PawnIO runs. Search the core log for 'PawnIO' to see why.")
-    elif buses and not ram:
-        out.append("SMBus works (%d bus(es)) but no RAM was found. Close other RGB programs, then press Rescan." % len(buses))
+    elif not board and d["elevated"] and svc == "RUNNING":
+        out.append("PawnIO runs but no motherboard SMBus was opened. Search the core log for 'PawnIO' to see why.")
+    elif board and not ram:
+        out.append("The motherboard SMBus is open but no RAM was found. Close other RGB programs, then press Rescan.")
     expected = d["config"].get("ram_expected")
     if expected and 0 < len(ram) < expected:
         out.append("Only %d of %d RAM sticks were found. Press Rescan; if a stick keeps missing, see Troubleshooting in README.md."
@@ -131,7 +133,8 @@ def text(d):
     buses = core.get("i2c_buses")
     if buses is not None:
         lines.append("SMBus buses: %d" % len(buses))
-        lines += ["  %s (bus %s, PCI %s)" % (b["name"], b["bus_id"], b["pci"]) for b in buses]
+        lines += ["  %s (bus %s, PCI %s)%s" % (b["name"], b["bus_id"], b["pci"], "" if b["name"].startswith("PawnIO") else ", GPU: does not reach RAM")
+                  for b in buses]
     if d["helper_service"]["name"]:
         lines.append("Helper service %s: %s" % (d["helper_service"]["name"], d["helper_service"]["state"]))
     lines.append("Other RGB programs running: %s" % (", ".join(d["conflicts"]) or "none"))
