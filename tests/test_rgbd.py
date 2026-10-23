@@ -4,10 +4,11 @@ OpenRGB or touch hardware.
 
   python -m unittest discover -s tests -v
 """
+import importlib
 import unittest
 from unittest import mock
 
-import sdk_stub  # noqa: F401  (puts the repo on sys.path, keeps logs out of the checkout)
+importlib.import_module("sdk_stub")  # puts the repo on sys.path, keeps logs out of the checkout
 import rgb
 import rgbcore_client as rc
 import rgbd

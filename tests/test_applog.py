@@ -6,11 +6,12 @@
 import json
 import os
 import tempfile
+import importlib
 import unittest
 import zipfile
 from unittest import mock
 
-import sdk_stub  # noqa: F401  (puts the repo on sys.path, keeps logs out of the checkout)
+importlib.import_module("sdk_stub")  # puts the repo on sys.path, keeps logs out of the checkout
 import applog
 
 

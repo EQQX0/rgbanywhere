@@ -10,11 +10,12 @@ import os
 import socket
 import tempfile
 import threading
+import importlib
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest import mock
 
-import sdk_stub  # noqa: F401  (puts the repo on sys.path)
+importlib.import_module("sdk_stub")  # puts the repo on sys.path
 import rgbctl
 
 TOKEN = "t" * 32
