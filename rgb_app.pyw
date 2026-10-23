@@ -1,9 +1,9 @@
-"""RGB Control: lighting (RAM, fans, keyboard, mouse via the embedded OpenRGB core) and the DeepCool cooler screen.
+"""RGB Control: lighting (RAM, fans, keyboard, mouse via the bundled OpenRGB) and the DeepCool cooler screen.
 
 UI is ui/index.html in a WebView2 window (pywebview). A tiny localhost server serves the page and a
 cached copy of whatever the cooler is playing, so the preview never locks DeepCool's file.
 
-Modified by EQQX2, 2026-10-22: lighting goes through the embedded OpenRGB core (rgbd.py) instead of an OpenRGB server.
+Modified by EQQX2, 2026-10-22: lighting goes through rgbd.py, which runs the bundled OpenRGB.
 SPDX-License-Identifier: GPL-3.0-or-later
 """
 import base64

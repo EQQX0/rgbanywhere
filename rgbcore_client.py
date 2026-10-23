@@ -1,26 +1,28 @@
-"""Python side of the embedded OpenRGB device core (rgbcore.dll, built from third_party/openrgb).
+"""Python side of the lighting daemon: the object API rgb.py uses, and the backends behind it.
 
 Two backends give the same small object API (client.devices, dev.modes, dev.zones, dev.set_mode,
 dev.set_color, zone.resize), so rgb.py works with either:
 
-  CoreBackend    loads rgbcore.dll in this process (needs admin for SMBus / RAM lights)
+  SdkBackend     runs the bundled OpenRGB (openrgb\\OpenRGB.exe, unmodified) and talks to its SDK server
+                 (needs admin for SMBus / RAM lights)
   RemoteBackend  talks to the elevated daemon (rgbd.py) over a localhost socket
 
 Copyright (C) 2026 EQQX2
 SPDX-License-Identifier: GPL-3.0-or-later
-This program loads rgbcore.dll, which contains code derived from OpenRGB (GPL-2.0-or-later);
-see NOTICE and third_party/openrgb/LICENSE.
+OpenRGB (GPL-2.0-or-later) is a separate program that ships alongside; see NOTICE.
 """
-import ctypes
 import enum
 import json
 import os
 import socket
+import subprocess
 import threading
+import time
 from collections import namedtuple
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 47823
+SDK_PORT = 47826  # private port for our own OpenRGB process, so a copy you run yourself (6742) is left alone
 TASK_LIGHTING = "RGB Anywhere Lighting"  # elevated scheduled tasks (own names, so they never replace another install's tasks)
 TASK_RESCAN = "RGB Anywhere Rescan"
 TOKEN_FILE = os.path.join(HERE, "rgbd.token")
@@ -30,7 +32,7 @@ class RGBColor(namedtuple("RGBColor", "red green blue")):
     pass
 
 
-# Same order as DEVICE_TYPE_* / ZONE_TYPE_* in OpenRGB 1.0's RGBController.h
+# Same order as DEVICE_TYPE_* / ZONE_TYPE_* in OpenRGB's RGBController.h
 class DeviceType(enum.IntEnum):
     MOTHERBOARD = 0; DRAM = 1; GPU = 2; COOLER = 3; LEDSTRIP = 4; KEYBOARD = 5; MOUSE = 6; MOUSEMAT = 7
     HEADSET = 8; HEADSET_STAND = 9; GAMEPAD = 10; LIGHT = 11; SPEAKER = 12; VIRTUAL = 13; STORAGE = 14
@@ -48,9 +50,9 @@ def _enum(cls, v):
         return cls(0) if cls is ZoneType else DeviceType.UNKNOWN
 
 
-# How a mode takes colours (MODE_COLORS_* in OpenRGB's RGBControllerInterface.h)
+# How a mode takes colours (ModeColors in OpenRGB's SDK)
 COLOR_KINDS = {0: "none", 1: "per-LED", 2: "mode colour", 3: "random"}
-# What rgb_set_colors did (see core/rgbcore.cpp)
+# What SdkBackend.set_colors did
 SET_RESULTS = {0: "per-LED colours", 1: "mode colour", 2: "mode takes no colour"}
 
 
@@ -93,7 +95,7 @@ class Device:
         self.type = _enum(DeviceType, j["type"])
         self.metadata = Metadata(j.get("location", ""))
         self.led_count = j["led_count"]
-        info = {m["name"]: m for m in j.get("mode_info", [])}  # absent from a core built before 0.1.5
+        info = {m["name"]: m for m in j.get("mode_info", [])}
         self.modes = [Mode(m, info.get(m)) for m in j["modes"]]
         self.active_mode = j.get("active_mode", -1)
         self.vendor = j.get("vendor", "")
@@ -108,7 +110,7 @@ class Device:
         raise ValueError("Mode %s not found on %s" % (name, self.name))
 
     def set_color(self, color):
-        """Returns what the core did: a key of SET_RESULTS (None from a core that does not report it)."""
+        """Returns what the backend did: a key of SET_RESULTS."""
         rgb = (color.red << 16) | (color.green << 8) | color.blue
         return self._client._b.set_colors(self._idx, [rgb] * max(self.led_count, 1))
 
@@ -131,9 +133,9 @@ LOG_LEVELS = {"fatal": 0, "error": 1, "warning": 2, "info": 3, "verbose": 4, "de
 
 
 def set_core_log_level(config_dir, level):
-    """Set the device core's own log level (OpenRGB.json > LogManager > loglevel) before it starts.
+    """Set OpenRGB's own log level (OpenRGB.json > LogManager > loglevel) before it starts.
 
-    The core writes its log to <config_dir>/logs/OpenRGB_<time>.log. "debug" shows every detector it tries.
+    OpenRGB writes its log to <config_dir>/logs/OpenRGB_<time>.log. "debug" shows every detector it tries.
     """
     n = LOG_LEVELS.get(str(level).lower(), level)
     if not isinstance(n, int):
@@ -149,66 +151,175 @@ def set_core_log_level(config_dir, level):
         json.dump(settings, f, indent=4)
 
 
-# ---------------------------------------------------------------- in-process backend
-class CoreBackend:
-    def __init__(self, dll=None, config_dir=None, log_level=None):
-        dll = dll or os.path.join(HERE, "rgbcore.dll")
-        os.add_dll_directory(os.path.dirname(dll))
-        self._dll = ctypes.CDLL(dll)
-        d = self._dll
-        d.rgb_init.argtypes = [ctypes.c_char_p]
-        d.rgb_devices_json.restype = ctypes.c_char_p
-        d.rgb_set_mode.argtypes = [ctypes.c_int, ctypes.c_char_p]
-        d.rgb_set_colors.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_uint), ctypes.c_int]
-        d.rgb_set_colors.restype = ctypes.c_int
-        self._has_debug = hasattr(d, "rgb_debug_json")  # added in 0.1.5
-        if self._has_debug:
-            d.rgb_debug_json.restype = ctypes.c_char_p
-        d.rgb_resize_zone.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
-        d.rgb_core_version.restype = ctypes.c_char_p
-        self._lock = threading.Lock()
-        cfg = config_dir or os.path.join(HERE, "cache", "core")
-        os.makedirs(cfg, exist_ok=True)
+# ---------------------------------------------------------------- OpenRGB backend
+class SdkBackend:
+    """Runs the bundled, unmodified OpenRGB (openrgb\\OpenRGB.exe) as a headless SDK server on 127.0.0.1 and talks to it
+    with the openrgb-python client. SMBus / RAM lights need admin, so the elevated daemon owns the process.
+
+    spawn=False connects to a server somebody else started (used by the tests)."""
+
+    SETTLE = 6  # seconds without a change in the device list before detection counts as finished
+    START_TIMEOUT = 120
+
+    def __init__(self, exe=None, config_dir=None, log_level=None, port=SDK_PORT, spawn=True):
+        self.exe = exe or os.path.join(HERE, "openrgb", "OpenRGB.exe")
+        self.core_dir = os.path.dirname(self.exe)
+        self.port, self.spawn = port, spawn
+        self.config_dir = config_dir or os.path.join(HERE, "cache", "core")
+        os.makedirs(self.config_dir, exist_ok=True)
         if log_level is not None:
-            set_core_log_level(cfg, log_level)
-        self.config_dir = cfg
-        self._call(d.rgb_init, cfg.encode())
+            set_core_log_level(self.config_dir, log_level)
+        self._lock = threading.RLock()
+        self._proc = None
+        self._cli = None
+        self._start()
 
-    def _call(self, fn, *a):
-        with self._lock:
-            return fn(*a)
+    # -- process and connection
+    def _start(self):
+        from openrgb import OpenRGBClient
+        if self.spawn:
+            if not os.path.exists(self.exe):
+                raise FileNotFoundError("OpenRGB is missing: %s. Reinstall RGB Anywhere." % self.exe)
+            self._proc = subprocess.Popen(
+                [self.exe, "--server", "--server-host", "127.0.0.1", "--server-port", str(self.port),
+                 "--config", self.config_dir, "--noautoconnect"],
+                cwd=self.core_dir, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=0x08000000)  # CREATE_NO_WINDOW
+        deadline = time.time() + self.START_TIMEOUT
+        while True:
+            try:
+                self._cli = OpenRGBClient("127.0.0.1", self.port, "RGB Anywhere", protocol_version=3)  # 3: no plugin requests
+                break
+            except (OSError, ConnectionError):
+                if self._proc is not None and self._proc.poll() is not None:
+                    raise RuntimeError("OpenRGB exited with code %s while starting" % self._proc.returncode)
+                if time.time() > deadline:
+                    raise TimeoutError("OpenRGB did not open its SDK server on port %d" % self.port)
+                time.sleep(0.5)
+        self._settle()
 
+    def _settle(self):
+        """OpenRGB lists devices as the detectors find them; wait until the list stops growing."""
+        last, since = -1, time.time()
+        deadline = time.time() + self.START_TIMEOUT
+        while time.time() < deadline:
+            self._cli.update()
+            n = len(self._cli.devices)
+            if n != last:
+                last, since = n, time.time()
+            elif time.time() - since >= self.SETTLE:
+                return
+            time.sleep(1)
+
+    def _stop(self):
+        if self._cli is not None:
+            try:
+                self._cli.disconnect()
+            except Exception:
+                pass
+            self._cli = None
+        if self._proc is not None and self._proc.poll() is None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(10)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+        self._proc = None
+
+    def _ensure(self):
+        if self.spawn and (self._proc is None or self._proc.poll() is not None):
+            self._stop()
+            self._start()
+        return self._cli
+
+    # -- backend interface (same as RemoteBackend)
     def version(self):
-        return self._dll.rgb_core_version().decode()
+        cli = self._cli
+        return "OpenRGB 1.0 (bundled), SDK protocol %s" % (cli.protocol_version if cli else "?")
+
+    @staticmethod
+    def _device_json(i, d):
+        modes = [{"name": m.name, "color_mode": int(m.color_mode), "flags": int(m.flags), "colors": len(m.colors or [])}
+                 for m in d.modes]
+        meta = d.metadata
+        return {"index": i, "name": d.name, "vendor": meta.vendor or "", "description": meta.description,
+                "location": meta.location, "serial": meta.serial, "type": int(d.type), "led_count": len(d.leds),
+                "active_mode": d.active_mode, "modes": [m["name"] for m in modes], "mode_info": modes,
+                "zones": [{"name": z.name, "type": int(z.type), "leds": len(z.leds), "leds_min": zd.leds_min,
+                           "leds_max": zd.leds_max} for z, zd in zip(d.zones, d.data.zones)]}
 
     def devices(self):
-        return json.loads(self._call(self._dll.rgb_devices_json).decode("utf-8"))
+        with self._lock:
+            cli = self._ensure()
+            cli.update()
+            return [self._device_json(i, d) for i, d in enumerate(cli.devices)]
+
+    def _dev(self, i):
+        devs = self._ensure().devices
+        if not 0 <= i < len(devs):
+            raise ValueError("no device %s" % i)
+        return devs[i]
 
     def set_mode(self, dev, name):
-        r = self._call(self._dll.rgb_set_mode, dev, name.encode())
-        if r:
-            raise ValueError("set_mode failed (%d)" % r)
+        with self._lock:
+            self._dev(dev).set_mode(name)
 
     def set_colors(self, dev, colors):
-        arr = (ctypes.c_uint * len(colors))(*colors)
-        r = self._call(self._dll.rgb_set_colors, dev, arr, len(colors))
-        if r < 0:
-            raise ValueError("set_colors failed (%d)" % r)
-        return r
+        """0 = per-LED colours applied, 1 = applied as the mode colour, 2 = the active mode takes no colour."""
+        from openrgb.utils import ModeColors, ModeFlags, RGBColor as ORGBColor
+
+        def conv(v):
+            return ORGBColor((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF)
+
+        with self._lock:
+            d = self._dev(dev)
+            if not 0 <= d.active_mode < len(d.modes):
+                raise ValueError("device %s has no active mode" % dev)
+            m = d.modes[d.active_mode]
+            # Modes such as Static on ASUS Aura boards keep their colour in the mode itself (MODE_SPECIFIC); per-LED
+            # colours written to them change nothing on the hardware, so set the mode's colour and push the mode.
+            if m.color_mode != ModeColors.PER_LED and ModeFlags.HAS_MODE_SPECIFIC_COLOR in m.flags and colors:
+                count = len(m.colors or []) or max(m.colors_min or 1, 1)
+                if m.colors_max:
+                    count = min(count, m.colors_max)
+                m.color_mode = ModeColors.MODE_SPECIFIC
+                m.colors = [conv(colors[0])] * count
+                d.set_mode(m)
+                return 1
+            if m.color_mode != ModeColors.PER_LED and ModeFlags.HAS_PER_LED_COLOR not in m.flags:
+                return 2
+            cur = list(d.colors)
+            for i in range(min(len(cur), len(colors))):
+                cur[i] = conv(colors[i])
+            d._set_device_colors(cur)
+            return 0
 
     def debug(self):
-        if not self._has_debug:
-            return {"note": "rgbcore.dll is older than 0.1.5 and reports no debug info"}
-        return json.loads(self._call(self._dll.rgb_debug_json).decode("utf-8"))
+        running = (self._proc is not None and self._proc.poll() is None) if self.spawn else None
+        # The SDK does not list SMBus buses, so i2c_buses is None; diag reads OpenRGB's log instead.
+        return {"started": self._cli is not None, "config_dir": self.config_dir, "exe": self.exe, "running": running,
+                "pid": self._proc.pid if self._proc is not None else None, "i2c_buses": None}
 
     def resize_zone(self, dev, zone, n):
-        self._call(self._dll.rgb_resize_zone, dev, zone, n)
+        with self._lock:
+            d = self._dev(dev)
+            if not 0 <= zone < len(d.zones):
+                raise ValueError("no zone %s" % zone)
+            d.zones[zone].resize(n)
 
     def rescan(self):
-        self._call(self._dll.rgb_rescan)
+        """The SDK has no rescan request, so restart OpenRGB: it detects everything again on start."""
+        with self._lock:
+            if not self.spawn:
+                self._cli.update()
+                return
+            self._stop()
+            time.sleep(1)
+            self._start()
 
     def shutdown(self):
-        self._call(self._dll.rgb_shutdown)
+        with self._lock:
+            self._stop()
 
 
 # ---------------------------------------------------------------- daemon backend

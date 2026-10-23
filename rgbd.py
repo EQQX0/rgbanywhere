@@ -1,4 +1,4 @@
-"""Lighting daemon: hosts the embedded OpenRGB device core (rgbcore.dll) in an elevated process.
+"""Lighting daemon: runs the bundled OpenRGB in an elevated process.
 
 Reaching RAM and some boards over SMBus needs admin, the app does not, so the app talks to this daemon over
 a localhost socket (token in rgbd.token). Run by the "RGB Anywhere Lighting" scheduled task (highest privileges).
@@ -8,7 +8,7 @@ a localhost socket (token in rgbd.token). Run by the "RGB Anywhere Lighting" sch
 
 Copyright (C) 2026 EQQX2
 SPDX-License-Identifier: GPL-3.0-or-later
-Uses rgbcore.dll, which contains code derived from OpenRGB (GPL-2.0-or-later); see NOTICE.
+Starts the unmodified OpenRGB (GPL-2.0-or-later) from openrgb\ as a separate program; see NOTICE.
 """
 import hmac
 import json
@@ -44,7 +44,7 @@ def _log_diagnosis():
         d = diag.collect(_core, _client)
         for line in diag.text(d).splitlines():
             _log.info("diag: %s", line)
-        applog.event("core_diagnosis", ok=not d["hints"], devices=len(d["devices"]), i2c_buses=len(d["core"].get("i2c_buses", [])),
+        applog.event("core_diagnosis", ok=not d["hints"], devices=len(d["devices"]), 
                      elevated=d["elevated"], pawnio=d["pawnio"]["service"], hints=d["hints"])
     except Exception:
         _log.exception("could not collect the diagnosis")
@@ -122,13 +122,13 @@ def serve():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     helper = rgb.stop_helper()
     try:
-        _core = rc.CoreBackend(log_level=rgb.CFG.get("core_log_level", "info"))
+        _core = rc.SdkBackend(log_level=rgb.CFG.get("core_log_level", "info"))
         _client = rc.Client(_core)
-        _log.info("core: %s, %d devices", _core.version(), len(_client.devices))
+        _log.info("OpenRGB: %s, %d devices", _core.version(), len(_client.devices))
         _log_diagnosis()
         _refresh_and_apply()
     except Exception:
-        _log.exception("could not start the device core")
+        _log.exception("could not start OpenRGB")
         applog.event("core_start", ok=False, error=applog.format_exc().strip().splitlines()[-1])
         raise
     finally:
@@ -141,7 +141,7 @@ def serve():
     try:
         _core.shutdown()
     finally:
-        os._exit(0)  # the core's background threads would keep the process alive
+        os._exit(0)  # the server threads would keep the process alive
 
 
 def main():

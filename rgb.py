@@ -1,6 +1,6 @@
-"""Set all RGB (RAM, fans, keyboard, mouse) through the embedded OpenRGB device core (rgbcore.dll, via rgbd.py).
+"""Set all RGB (RAM, fans, keyboard, mouse) through the bundled OpenRGB (started and controlled by rgbd.py).
 
-Modified by EQQX2, 2026-10-22: the OpenRGB server / openrgb-python is replaced by the embedded core.
+Modified by EQQX2, 2026-10-22: lighting goes through rgbd.py, which runs the bundled OpenRGB.
 SPDX-License-Identifier: GPL-3.0-or-later
 
 Usage:

@@ -1,12 +1,13 @@
-"""What the lighting core found, and plain-language reasons for anything missing.
+"""What OpenRGB found, and plain-language reasons for anything missing.
 
-collect() runs inside the lighting daemon (it needs the core and the daemon's own elevation); text() turns the
+collect() runs inside the lighting daemon (it needs OpenRGB and the daemon's own elevation); text() turns the
 result into the report that `python rgb.py --diagnose`, the daemon log and the debug report show. Reading only:
 nothing here changes a device.
 
 Copyright (C) 2026 EQQX2
 SPDX-License-Identifier: GPL-3.0-or-later
 """
+import csv
 import glob
 import os
 import platform
@@ -28,18 +29,22 @@ CONFLICTS = {
 }
 
 
-def _running_conflicts():
+def _running_conflicts(own_pids=()):
+    """Other RGB programs that are running. Our own bundled OpenRGB (own_pids) does not count."""
     try:
         r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, errors="ignore",
                            timeout=20, creationflags=0x08000000)
     except Exception:
         return []
-    names = {line.split(",")[0].strip('"').lower() for line in r.stdout.splitlines() if line}
+    names = set()
+    for row in csv.reader(r.stdout.splitlines()):
+        if len(row) > 1 and not (row[0].lower() == "openrgb.exe" and row[1] in {str(p) for p in own_pids}):
+            names.add(row[0].lower())
     return sorted({label for exe, label in CONFLICTS.items() if exe in names})
 
 
 def _log_problems(path, n=12):
-    """The last error and warning lines of the core's own log (OpenRGB_*.log), without its long HTML dialogs."""
+    """The last error and warning lines of OpenRGB's own log (OpenRGB_*.log), without its long HTML dialogs."""
     if not path:
         return []
     try:
@@ -61,7 +66,7 @@ def _device(d):
 def collect(core, client):
     """Everything the daemon knows about detection, as plain data (sent to the app as JSON)."""
     client.update()
-    core_dir = os.path.dirname(os.path.join(HERE, "rgbcore.dll"))
+    core_dir = getattr(core, "core_dir", os.path.join(HERE, "openrgb"))
     log_dir = os.path.join(getattr(core, "config_dir", os.path.join(HERE, "cache", "core")), "logs")
     logs = sorted(glob.glob(os.path.join(log_dir, "OpenRGB_*.log")))
     d = {
@@ -80,7 +85,7 @@ def collect(core, client):
             "modules": sorted(os.path.basename(p) for p in glob.glob(os.path.join(core_dir, "*.bin"))),
         },
         "helper_service": {"name": rgb.HELPER_SERVICE, "state": rgb.service_state(rgb.HELPER_SERVICE) if rgb.HELPER_SERVICE else None},
-        "conflicts": _running_conflicts(),
+        "conflicts": _running_conflicts([core.debug().get("pid")] if hasattr(core, "debug") else []),
         "config": {k: rgb.CFG[k] for k in ("ram_expected", "argb_leds", "helper_service", "core_log_level", "group_overrides")
                    if k in rgb.CFG},
         "devices": [_device(x) for x in client.devices],
@@ -116,15 +121,17 @@ def hints(d):
     elif svc != "RUNNING":
         out.append("The PawnIO driver service is %s. Restart the PC, or run 'sc start PawnIO' as admin, then press Rescan." % svc)
     if not d["pawnio"]["lib"] or not d["pawnio"]["modules"]:
-        out.append("PawnIOLib.dll or the PawnIO .bin modules are missing next to rgbcore.dll. Reinstall RGB Anywhere.")
+        out.append("PawnIOLib.dll or the PawnIO .bin modules are missing from the openrgb folder. Reinstall RGB Anywhere.")
     # RAM sits on the motherboard's SMBus, which only PawnIO opens; the NVIDIA/AMD GPU buses don't reach it.
-    board = [b for b in buses or [] if b["name"].startswith("PawnIO")]
-    if buses is None:
-        out.append("rgbcore.dll is older than this app and reports no SMBus details. Rebuild it with build.ps1 or reinstall.")
-    elif not board and d["elevated"] and svc == "RUNNING" and "PawnIO" not in problems:
-        out.append("PawnIO runs but no motherboard SMBus was opened. Search the core log for 'PawnIO' to see why.")
-    elif board and not ram:
-        out.append("The motherboard SMBus is open but no RAM was found. Close other RGB programs, then press Rescan.")
+    if buses is not None:
+        board = [b for b in buses if b["name"].startswith("PawnIO")]
+        if not board and d["elevated"] and svc == "RUNNING" and "PawnIO" not in problems:
+            out.append("PawnIO runs but no motherboard SMBus was opened. Search OpenRGB's log for 'PawnIO' to see why.")
+        elif board and not ram:
+            out.append("The motherboard SMBus is open but no RAM was found. Close other RGB programs, then press Rescan.")
+    elif svc == "RUNNING" and d["elevated"] and not ram and "PawnIO" not in problems:
+        out.append("PawnIO runs but no RAM was found. Close other RGB programs, then press Rescan; if it stays missing, "
+                   "search OpenRGB's log for 'PawnIO' or 'SMBus'.")
     expected = d["config"].get("ram_expected")
     if expected and 0 < len(ram) < expected:
         out.append("Only %d of %d RAM sticks were found. Press Rescan; if a stick keeps missing, see Troubleshooting in README.md."
@@ -133,7 +140,7 @@ def hints(d):
         out.append("Other RGB programs are running: %s. They fight over the same devices, so colours may not stick "
                    "and devices may be missing. Quit them (also from the tray) and press Rescan." % ", ".join(d["conflicts"]))
     if not devs:
-        out.append("No device was found at all. The core log lists each detector it tried.")
+        out.append("No device was found at all. OpenRGB's log lists each detector it tried.")
     for x in devs:
         kinds = {m["name"]: m["colors"] for m in x["modes"]}
         if kinds.get(x["active_mode"]) in ("none", "random"):
@@ -145,7 +152,7 @@ def text(d):
     """Plain-text report of collect()'s result."""
     lines = ["RGB Anywhere diagnosis", ""]
     lines.append("Daemon: pid %s, %s" % (d["pid"], "running as admin" if d["elevated"] else "NOT running as admin"))
-    lines.append("Core: %s" % d["core_version"])
+    lines.append("OpenRGB: %s" % d["core_version"])
     core = d["core"]
     if "note" in core:
         lines.append("  " + core["note"])
@@ -171,7 +178,7 @@ def text(d):
         if x["zones"]:
             lines.append("     zones: %s" % "; ".join(x["zones"]))
     lines.append("")
-    lines.append("Core log: %s" % (d["core_log"] or "none yet"))
+    lines.append("OpenRGB log: %s" % (d["core_log"] or "none yet"))
     if d.get("core_log_problems"):
         lines.append("Last errors and warnings in it:")
         lines += ["  " + l for l in d["core_log_problems"]]

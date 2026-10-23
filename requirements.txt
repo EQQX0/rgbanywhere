@@ -5,3 +5,4 @@ pillow-heif>=1.0
 imageio-ffmpeg>=0.6
 qrcode>=8.0
 pywin32>=306
+openrgb-python>=0.3.8

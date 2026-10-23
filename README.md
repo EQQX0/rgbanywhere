@@ -2,13 +2,13 @@
 
 RGB Control is a Windows app that sets the color, mode and brightness of your RGB lights from one window. It groups RAM, fans and motherboard, keyboard and mouse so you can color each group, and it has a tray icon, presets, a phone and Android remote, and optional control of a DeepCool cooler screen.
 
-## It embeds OpenRGB
+## It bundles OpenRGB
 
-RGB Control talks to your hardware through code from [OpenRGB](https://openrgb.org) (release 1.0, [commit 81bbe18a](https://gitlab.com/CalcProgrammer1/OpenRGB/-/tree/81bbe18a84c2e507006f19dd252e397e40a56bfe)). You do not need to install OpenRGB. The OpenRGB device core is in `third_party/openrgb/` with its license and copyright notices unchanged, and `build.ps1` compiles it into `rgbcore.dll`. An elevated background process (`rgbd.py`) loads that DLL, because RAM and some boards are reached over SMBus and that needs admin rights. The app itself runs as a normal user and talks to the process on localhost.
+RGB Control talks to your hardware through [OpenRGB](https://openrgb.org) 1.0 ([commit 81bbe18a](https://gitlab.com/CalcProgrammer1/OpenRGB/-/tree/81bbe18a84c2e507006f19dd252e397e40a56bfe)). You do not need to install it. The official Windows build sits unmodified in the `openrgb` folder. An elevated background process (`rgbd.py`) starts it without a window and controls it over the OpenRGB protocol on 127.0.0.1:47826, because RAM and some boards are reached over SMBus and that needs admin rights. The app itself runs as a normal user and talks to `rgbd.py` on localhost. A copy of OpenRGB you run yourself on its default port is left alone.
 
 ## License
 
-GPL-3.0-or-later (see `LICENSE`). OpenRGB is GPL-2.0-or-later, so the combined work is GPL-3.0-or-later. Third-party components and their licenses are in `THIRD_PARTY_LICENSES.md`. The source of everything you run, including the DLL, is in this repository. Files taken from OpenRGB that I changed say "Modified by EQQX2" in a comment.
+GPL-3.0-or-later (see `LICENSE`). OpenRGB is GPL-2.0-or-later and runs as a separate program, so it is not part of this work. Third-party components and their licenses are in `THIRD_PARTY_LICENSES.md`. `fetch-openrgb.ps1` downloads the official OpenRGB build and checks its SHA-256.
 
 ## Tested hardware
 
@@ -19,11 +19,11 @@ Tested on one PC only (Windows 11):
 - Logitech G515 RAPID TKL keyboard and G502 HERO mouse (via Lightspeed receiver)
 - DeepCool LT360 VISION cooler screen
 
-The core compiles in 187 of OpenRGB's 196 controller folders: keyboards, mice, motherboards, GPUs, RAM, fans, coolers and strips from many brands. Only the hardware above has been tried here. The nine folders left out are in `core/exclude.cmake`. Philips Hue needs extra libraries and two are Linux-only. Four contain GPL-2.0-only code (HID lamp arrays, Mountain keyboards, Gigabyte RGB Fusion2 USB, Lian Li hubs) and two contain files with no license header (Sinowealth keyboards, ASUS Aura Core laptops), so they cannot go into a GPL-3.0 build. Pass `-Controllers "CorsairDRAMController;AsusAuraUSBController"` to `build.ps1` for a smaller build.
+OpenRGB 1.0 supports keyboards, mice, motherboards, GPUs, RAM, fans, coolers and strips from many brands. Only the hardware above has been tried here.
 
-The detectors probe the same buses OpenRGB does, including SMBus on the motherboard. Close OpenRGB and iCUE before you start this app.
+OpenRGB probes many buses, including SMBus on the motherboard, including SMBus on the motherboard. Close OpenRGB and iCUE before you start this app.
 
-**Install on a second PC is untested.** The embedded core has also not been run against real hardware from this repository's final tree. Expect problems and read `logs\`.
+**Install on a second PC is untested.** The bundled-OpenRGB build has not been run against real hardware yet. Expect problems and read `logs\`.
 
 ## Download
 
@@ -41,23 +41,15 @@ Nothing is signed, so Windows SmartScreen may warn you. The checksum is download
 
 ## Build and install from source
 
-You need Windows 10 or 11, Python 3.10+ (tick "Add to PATH") and a C++ toolchain:
+You need Windows 10 or 11 and Python 3.10+ (tick "Add to PATH"). In PowerShell, in this folder:
 
 ```
-winget install BrechtSanders.WinLibs.POSIX.UCRT
-python -m pip install cmake ninja
-```
-
-Then in PowerShell, in this folder:
-
-```
-powershell -ExecutionPolicy Bypass -File build.ps1      # builds rgbcore.dll and copies its runtime files here
 powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `build.ps1` if the DLL is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
+`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
 
-Add `-Android` to `build.ps1` to build the Android app as well. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
+To build the Android app, run `android/build.ps1`. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
 
 ## How devices are grouped
 
@@ -85,7 +77,7 @@ Copy `config.example.json` to `config.json`. The file and every key are optional
 | `idle_rescan` | `true` rescans when you return to an idle PC (for Logitech G HUB, which sleeps keyboard and mouse lights) |
 | `icue_quit_on_close` | `true` makes iCUE's X button quit iCUE. Running iCUE together with this app can knock Corsair RAM into a state where it ignores colors |
 | `deepcool_path` | Path to DeepCool.exe if it is not in `C:\DeepCool` |
-| `core_log_level` | How much the device core logs: `info` (default), `verbose` or `debug`. `debug` lists every detector it tries. Takes effect when the lighting daemon starts |
+| `core_log_level` | How much OpenRGB logs: `info` (default), `verbose` or `debug`. `debug` lists every detector it tries. Takes effect when the lighting daemon starts |
 
 ## Command line
 
@@ -130,7 +122,7 @@ If devices are missing or colors don't change, run this in PowerShell from the i
 
 It lists what the lighting daemon found: whether it runs as admin, the PawnIO driver state, the SMBus buses it opened, every device with its modes and how each mode takes colors, other RGB programs that are running, and a numbered list of likely problems. It saves the same text to `logs\diagnose-<time>.txt`. The daemon also writes this diagnosis to `logs\rgb.log` each time it detects devices.
 
-Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. The device core's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
+Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
 

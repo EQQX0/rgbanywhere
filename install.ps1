@@ -1,6 +1,6 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
 # RGB Control installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
-# Installs Python packages, builds the embedded OpenRGB core if needed, then sets up the login tasks, the startup entry and the Start menu shortcut.
+# Installs Python packages, fetches the bundled OpenRGB if needed, then sets up the login tasks, the startup entry and the Start menu shortcut.
 # Asks for admin once (the lighting daemon needs it to reach RAM lights and some boards).
 #   -NoStartup  do not start the app at login
 #   -Desktop    put the shortcut on the desktop instead of the Start menu
@@ -40,11 +40,10 @@ if (Test-Path $bundled) {
     if ($LASTEXITCODE) { throw "pip install failed" }
 }
 
-# 2. Embedded OpenRGB core (rgbcore.dll). A release zip has it; a source checkout builds it with build.ps1.
-if (-not (Test-Path (Join-Path $here 'rgbcore.dll'))) {
-    Write-Host "rgbcore.dll not found; building it (needs MinGW-w64 GCC, CMake and Ninja, see README.md)..."
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'build.ps1')
-    if ($LASTEXITCODE) { throw "build.ps1 failed. Install the build tools listed in README.md and run it again." }
+# 2. OpenRGB, the program that talks to the hardware. A release zip has it in openrgb\; a source checkout downloads it.
+if (-not (Test-Path (Join-Path $here 'openrgb\OpenRGB.exe'))) {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'fetch-openrgb.ps1')
+    if ($LASTEXITCODE) { throw "fetch-openrgb.ps1 failed. Check your internet connection and run this again." }
 }
 # RAM and some boards are reached through the PawnIO driver (a separate, signed driver from https://pawnio.eu).
 if (-not (Get-Service PawnIO -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:ProgramFiles\PawnIO")) {

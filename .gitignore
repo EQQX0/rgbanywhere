@@ -27,15 +27,8 @@ android/*.idsig
 *.jks
 *.apk
 
-# Build outputs (made by build.ps1)
-build/
-/rgbcore.dll
-/PawnIOLib.dll
-/hidapi-hotplug.dll
-/libusb-1.0.dll
-/libwinpthread-1.dll
-/*.bin
-compiled_sources.txt
+# Downloaded by fetch-openrgb.ps1 (the official OpenRGB release, unmodified)
+/openrgb/
 
 # Python / editor
 __pycache__/

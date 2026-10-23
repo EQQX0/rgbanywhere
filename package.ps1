@@ -1,16 +1,12 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
 # Build a ready-to-run release zip: dist\RGBAnywhere-<version>-win64.zip
-#   powershell -ExecutionPolicy Bypass -File package.ps1 [-Version 0.1.0] [-SkipBuild]
-# The zip holds the app, rgbcore.dll (built by build.ps1), the runtime DLLs, and its own Python with every package
+#   powershell -ExecutionPolicy Bypass -File package.ps1 [-Version 0.1.0]
+# The zip holds the app, the official OpenRGB 1.0 release (openrgb\, unmodified), and its own Python with every package
 # installed, so the target PC needs nothing but Windows 10/11 (and the PawnIO driver for RAM/board lights).
 # Extract it to a permanent folder and run Install.cmd.
-param([string]$Version = '0.1.0', [switch]$SkipBuild)
+param([string]$Version = '0.1.0')
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $SkipBuild) {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'build.ps1')
-    if ($LASTEXITCODE) { throw 'build.ps1 failed' }
-}
 $pyver = (& python -c "import sys;print('%d.%d.%d' % sys.version_info[:3])")
 $minor = ($pyver -split '\.')[0..1] -join ''
 $name  = "RGBAnywhere-$Version-win64"
@@ -32,17 +28,19 @@ if ($LASTEXITCODE) { throw 'pip install failed' }
 [IO.File]::WriteAllText("$stage\python\python$minor._pth", ("python$minor.zip`r`n.`r`n..`r`nLib\site-packages`r`nLib\site-packages\win32`r`nLib\site-packages\win32\lib`r`nimport site`r`n"))
 Copy-Item "$site\pywin32_system32\*.dll" "$stage\python" -Force   # pywintypes/pythoncom DLLs: found next to python.exe
 
-# 2. App, core and runtime files
-$files = '*.py','*.pyw','rgbcore.dll','PawnIOLib.dll','hidapi-hotplug.dll','libusb-1.0.dll','libwinpthread-1.dll','*.bin',
-         'rgb.ico','config.example.json','requirements.txt','install.ps1','uninstall.ps1','LICENSE','NOTICE','THIRD_PARTY_LICENSES.md','README.md'
+# 2. App and OpenRGB
+$files = '*.py','*.pyw',
+         'rgb.ico','config.example.json','requirements.txt','install.ps1','uninstall.ps1','fetch-openrgb.ps1','LICENSE','NOTICE','THIRD_PARTY_LICENSES.md','README.md'
 foreach ($f in $files) { Copy-Item (Join-Path $here $f) $stage -Force }
 Copy-Item (Join-Path $here 'ui') $stage -Recurse -Force
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'fetch-openrgb.ps1') -Dest "$stage\openrgb"
+if ($LASTEXITCODE) { throw 'fetch-openrgb.ps1 failed' }
 [IO.File]::WriteAllText("$stage\rgbctl.cmd", "@echo off`r`n`"%~dp0python\python.exe`" -I `"%~dp0rgbctl.py`" %*`r`n")
 [IO.File]::WriteAllText("$stage\Install.cmd", "@echo off`r`ncd /d `"%~dp0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File install.ps1`r`npause`r`n")
 Set-Content "$stage\version.txt" $Version -Encoding ascii
 [IO.File]::WriteAllText("$stage\SOURCE.txt", @"
 RGB Anywhere $Version. Corresponding source (GPL): https://github.com/EQQX0/rgbanywhere  (tag v$Version)
-It includes OpenRGB (GPL-2.0-or-later) in third_party/openrgb; rgbcore.dll is built from that source with build.ps1.
+openrgb\ is the unmodified official OpenRGB 1.0 Windows release (GPL-2.0-or-later), source: https://gitlab.com/CalcProgrammer1/OpenRGB (commit 81bbe18a84c2e507006f19dd252e397e40a56bfe). It runs as a separate program.
 Python $pyver (python\) is the unmodified embeddable build from python.org. Package licenses: python\Lib\site-packages\*.dist-info.
 "@)
 

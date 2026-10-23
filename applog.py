@@ -242,7 +242,7 @@ def _versions():
 
 
 def build_report(diagnosis=None):
-    """Zip the logs, the device core's own logs, settings (secrets removed), system info and, when given, the
+    """Zip the logs, OpenRGB's own logs, settings (secrets removed), system info and, when given, the
     lighting daemon's diagnosis text (diag.text). Returns the zip path."""
     os.makedirs(LOG_DIR, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")

@@ -1,35 +1,29 @@
 # Third-party licenses
 
-RGB Control as a whole is released under the GNU General Public License, version 3 or (at your option) any later version (see `LICENSE`). It contains and links the components below. Their notices and licenses stay with them.
+RGB Control as a whole is released under the GNU General Public License, version 3 or (at your option) any later version (see `LICENSE`). It ships and uses the components below. Their notices and licenses stay with them.
 
-## OpenRGB (embedded, source included)
+## OpenRGB (bundled, unmodified)
 
 - Project: OpenRGB, https://openrgb.org, https://gitlab.com/CalcProgrammer1/OpenRGB
-- Version: release_1.0, commit `81bbe18a84c2e507006f19dd252e397e40a56bfe`
+- Version: release 1.0, commit `81bbe18a84c2e507006f19dd252e397e40a56bfe`
   https://gitlab.com/CalcProgrammer1/OpenRGB/-/tree/81bbe18a84c2e507006f19dd252e397e40a56bfe
-- Copyright: Adam Honse and the OpenRGB contributors. The author of each file is named in that file's header.
-- License: GNU GPL version 2 or later (`SPDX-License-Identifier: GPL-2.0-or-later` in the headers). The upstream `LICENSE` file is kept unchanged at `third_party/openrgb/LICENSE`.
-- Where: the complete upstream tree is in `third_party/openrgb/`. `build.ps1` compiles the device core plus 187 of the 196 controller folders into `rgbcore.dll`. The compiled files are the source list in `core/CMakeLists.txt` and the folders not listed in `core/exclude.cmake`. A scripted check of the header in all 894 compiled files (2026-10-22) found 890 marked GPL-2.0-or-later, `libe131` (Apache-2.0), `qt/hsv.cpp` (MIT) and one file with no header (`dependencies/NVFC/nvapi.cpp`, see open points). Folders whose files are marked GPL-2.0-only (HIDLampArray, Mountain, GigabyteRGBFusion2USB, LianLi) are left out because GPL-2.0-only code cannot be combined into a GPL-3.0-or-later work. Folders with files that have no license header (Sinowealth, AsusAuraCore) are left out too. The list is in `core/exclude.cmake`. This check reads headers only; it is not a legal review.
-- Changes made to OpenRGB files (each one carries a "Modified by EQQX2" comment in the file; headers and copyright lines are untouched):
-  - `third_party/openrgb/i2c_smbus/Windows/i2c_smbus_pawnio.cpp`: finds the PawnIO `.bin` modules next to `rgbcore.dll` instead of next to the host executable.
-  - `third_party/openrgb/wmi/wmi.cpp`: no COM initialisation in a static initialiser (it deadlocks inside a DLL); COM is initialised as multithreaded and started from `rgb_init()`.
-- Combining GPL-2.0-or-later code with GPL-3.0-or-later code is allowed; the combined work is distributed under GPL-3.0-or-later.
+- Copyright: Adam Honse and the OpenRGB contributors.
+- License: GNU GPL version 2 or later overall. Some folders of the upstream tree carry GPL-2.0-only headers.
+- How it ships: the official Windows build (`OpenRGB_1.0_Windows_64_81bbe18.zip` from https://codeberg.org/OpenRGB/OpenRGB/releases, SHA-256 `182A52A3C97C4C4AE52C80286B4260C9666C51C3447DBC416EE8945F66192E90`) is unpacked unmodified into `openrgb\`. `fetch-openrgb.ps1` downloads it, checks the hash and unpacks it. Its source is at the commit above.
+- How it is used: `rgbd.py` starts `openrgb\OpenRGB.exe` as a separate process with `--server` on 127.0.0.1:47826 and talks to it over the OpenRGB network protocol. Nothing from OpenRGB is compiled or linked into RGB Control, so the GPL-2.0-or-later program and the GPL-3.0-or-later app are separate works.
 
-## Binaries that ship inside the OpenRGB tree
+## Files inside the OpenRGB zip
 
-`build.ps1` copies these prebuilt files from `third_party/openrgb/dependencies/` next to the app. They were not built from source here.
+These come from the official OpenRGB build and are not modified here. Licenses are as stated upstream; I have not checked each one against its source.
 
 | Component | Used for | License | Source |
 |-----------|----------|---------|--------|
-| PawnIOLib.dll (Copyright (C) 2023 namazso) | talking to the PawnIO driver | LGPL-2.1-or-later (stated in the `PawnIOLib.h` header; the archived PawnIOLib repository page names no license and points to the main PawnIO repository) | https://github.com/namazso/PawnIOLib (archived, moved to https://github.com/namazso/PawnIO) |
-| PawnIO modules `*.bin` | SMBus / LPC access modules | LGPL-2.1 (its COPYING file; "or later" not checked) | https://github.com/namazso/PawnIO.Modules |
-| hidapi-hotplug.dll | USB HID access | hidapi licenses (BSD-3-Clause / GPL-3.0 / original hidapi license) | https://gitlab.com/CalcProgrammer1/hidapi (OpenRGB's hotplug fork) |
+| PawnIOLib.dll and `*.bin` modules | talking to the PawnIO driver (SMBus, LPC) | PawnIOLib header: LGPL-2.1-or-later. Modules: LGPL-2.1 | https://github.com/namazso/PawnIO, https://github.com/namazso/PawnIO.Modules |
+| hidapi-hotplug.dll | USB HID access | hidapi licenses | https://gitlab.com/CalcProgrammer1/hidapi |
 | libusb-1.0.dll | USB access | LGPL-2.1-or-later | https://libusb.info |
-| libwinpthread-1.dll | MinGW-w64 threading runtime, copied from your toolchain | MIT / ZPL-2.1 | https://www.mingw-w64.org |
+| Qt 6 DLLs and plugins | OpenRGB's own GUI code, loaded even when headless | LGPL-3.0 and others | https://www.qt.io |
 
-The PawnIO **driver** is not distributed here. Setup installs it with `winget install namazso.PawnIO`. Its repository (https://github.com/namazso/PawnIO) lists GPL-2.0 (version 2 or later) with an exception for combining it with LGPL programs and with modules that talk to it only through its device IO-control interface. pawnio.eu states no redistribution terms, so this project does not bundle the driver or its installer. The LGPL-2.1 text and notes for the bundled PawnIO files are in `third_party/openrgb/dependencies/PawnIO/`.
-
-Code compiled into `rgbcore.dll` from `third_party/openrgb/`: nlohmann/json (MIT), CRCpp (`CRC.h`, BSD-3-Clause, Copyright Daniel Bahr), libe131 (Apache-2.0, Copyright 2016 Hugo Hromic; Apache-2.0 is compatible with GPL-3.0), `qt/hsv.cpp` (MIT, Copyright 2013 Martin Mitas), `dependencies/NVFC` (NVIDIA API wrapper, license as in OpenRGB) and the AMD Display Library headers (MIT, Copyright AMD). License text is in each file's header. The hidapi and libusb headers describe the DLLs above. Other folders in that directory (hueplusplus, libe131, mdns, stb, mbedtls, and so on) are part of the upstream tree but are not compiled into `rgbcore.dll`.
+The PawnIO **driver** is not distributed here. Setup installs it with `winget install namazso.PawnIO`. Its repository (https://github.com/namazso/PawnIO) lists GPL-2.0 (version 2 or later) with an exception for combining it with LGPL programs and with modules that talk to it only through its device IO-control interface. pawnio.eu states no redistribution terms, so this project does not bundle the driver or its installer.
 
 ## Python packages (installed with pip, not included)
 
@@ -42,6 +36,7 @@ Code compiled into `rgbcore.dll` from `third_party/openrgb/`: nlohmann/json (MIT
 | imageio-ffmpeg | BSD-2-Clause | ships an FFmpeg binary (LGPL-2.1+ or GPL, depending on the build; see https://github.com/imageio/imageio-ffmpeg) |
 | qrcode | BSD | QR code for pairing |
 | pywin32 | PSF-2.0 | Windows APIs |
+| openrgb-python | GPL-3.0 | client for the OpenRGB network protocol |
 | proxy_tools, bottle, pythonnet, clr_loader, cffi, six, typing_extensions | MIT, MIT, MIT, MIT, MIT, MIT, PSF-2.0 | pulled in by pywebview |
 
 ## Android app
@@ -56,9 +51,9 @@ Code compiled into `rgbcore.dll` from `third_party/openrgb/`: nlohmann/json (MIT
 
 These need a person to confirm. See the compliance checklist in `README.md`.
 
-- Exact license wording of the prebuilt PawnIO and hidapi binaries should be checked against their upstream repositories before a public release.
+- License wording of the PawnIO, hidapi and Qt files inside the OpenRGB zip should be checked against upstream before a public release.
 - The FFmpeg build inside imageio-ffmpeg and libheif inside pillow-heif come from pip; this project does not redistribute them.
 
 ## Release zip
 
-The release zip adds the unmodified embeddable Python from python.org (PSF-2.0, `python\` folder) and the pip packages listed above installed under `python\Lib\site-packages`, each with its `*.dist-info` license files. `SOURCE.txt` in the zip points to this repository, tag `v<version>`, as the corresponding source.
+The release zip adds the unmodified OpenRGB build (`openrgb\`), the unmodified embeddable Python from python.org (PSF-2.0, `python\` folder) and the pip packages listed above installed under `python\Lib\site-packages`, each with its `*.dist-info` license files. `SOURCE.txt` in the zip points to this repository, tag `v<version>`, as the corresponding source.
