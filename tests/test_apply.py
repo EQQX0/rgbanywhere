@@ -172,6 +172,25 @@ class DaemonTest(Through, Setup):
         self.assertEqual(d["devices"], [])
 
 
+class DaemonPortTest(unittest.TestCase):
+    """serve() when its port is taken. Server is replaced by a failing bind, so serve() can never get further."""
+
+    def serve(self, daemon_answers):
+        def taken(*a, **k):
+            raise OSError(10048, "address in use")
+        with mock.patch.object(rgbd, "Server", taken), mock.patch.object(rgbd, "reachable", lambda: daemon_answers), \
+                mock.patch.object(rc, "SdkBackend", side_effect=AssertionError("must not start OpenRGB")), \
+                self.assertLogs("rgb.rgbd", "INFO") as logs:
+            rgbd.serve()
+        return logs.output[0]
+
+    def test_port_taken_by_another_program_is_reported(self):
+        self.assertIn("taken by another program", self.serve(False))
+
+    def test_running_daemon_is_left_alone(self):
+        self.assertIn("already running", self.serve(True))
+
+
 class RescanWaitTest(unittest.TestCase):
     def wait(self, answers, **kw):
         clock = [0.0]

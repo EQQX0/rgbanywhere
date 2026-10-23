@@ -171,8 +171,13 @@ def serve():
     global _token
     try:
         server = Server(("127.0.0.1", rc.PORT), Handler)
-    except OSError:
-        _log.info("daemon already running; exiting")
+    except OSError as e:
+        if reachable():
+            _log.info("daemon already running; exiting")
+        else:  # the app keeps trying to start us and nothing ever answers: say why
+            _log.error("port %d on 127.0.0.1 is taken by another program (%s); the lighting daemon cannot start. "
+                       "Find it with: netstat -ano | findstr :%d", rc.PORT, e, rc.PORT)
+            applog.event("daemon_port", ok=False, error="port %d taken: %s" % (rc.PORT, e))
         return
     if not rgb.is_elevated():
         _log.warning("not elevated: RAM and some boards will not be found. Run it from the 'RGB Anywhere Lighting' task.")
