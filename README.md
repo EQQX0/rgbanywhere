@@ -128,7 +128,7 @@ If devices are missing or colors don't change, run this in PowerShell from the i
 
 It lists what the lighting daemon found: whether it runs as admin, whether OpenRGB started (and why not), the PawnIO driver state, the SMBus buses OpenRGB's log says it opened, every device with its modes, zones and how each mode takes colors, other RGB programs that are running, the newest OpenRGB log, and a numbered list of likely problems. If the daemon does not answer, it reports what it can see without it and exits with code 1. It saves the same text to `logs\diagnose-<time>.txt`. The daemon also writes this diagnosis to `logs\rgb.log` each time it detects devices.
 
-What the common messages mean:
+`docs/lighting-path.md` follows a colour change and monitors-off from the button to the hardware, with the log line for each step. What the common messages mean:
 
 | Message | Cause and fix |
 |---------|---------------|
