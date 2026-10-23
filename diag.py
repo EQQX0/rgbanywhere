@@ -203,7 +203,7 @@ def hints(d):
                    "'winget upgrade namazso.PawnIO'.")
     if svc is None:
         out.append("The PawnIO driver is not installed, so RAM lights cannot be reached. Install it with "
-                   "'winget install namazso.PawnIO', restart the PC, then press Rescan.")
+                   "'winget install namazso.PawnIO' (or run Setup again), restart the PC, then press Rescan.")
     elif svc != "RUNNING":
         out.append("The PawnIO driver service is %s. Restart the PC, or run 'sc start PawnIO' as admin, then press Rescan." % svc)
     if d["core_exe_present"] and (not d["pawnio"]["lib"] or not d["pawnio"]["modules"]):

@@ -33,7 +33,7 @@ To update, run Setup again. It stops the running app, the lighting daemon and Op
 
 To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts and the install folder, including your settings. The PawnIO driver stays, because other programs may use it.
 
-The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. The installer runs `winget install namazso.PawnIO` when the driver is missing, and prints a warning with the link if that fails. The release does not contain the driver.
+The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. When the driver is missing, Setup downloads its installer from the author's release page (github.com/namazso/PawnIO.Setup), checks the SHA-256, installs it silently and starts it. If that fails, or the driver is installed but Windows will not start it, Setup prints why and USB devices keep working. The release does not contain the driver.
 
 Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd`. The `.sha256` file next to it holds the checksum.
 
@@ -47,7 +47,7 @@ You need Windows 10 or 11 and Python 3.10+ (tick "Add to PATH"). In PowerShell, 
 powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
+`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script downloads from the author's release page (hash-checked) and installs when it is missing. USB devices work without it.
 
 The unit tests need only Python and `openrgb-python`. They run against a stub OpenRGB server and touch no hardware:
 

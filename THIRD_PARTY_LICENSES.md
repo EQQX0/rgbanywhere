@@ -23,7 +23,7 @@ These come from the official OpenRGB build and are not modified here. Licenses a
 | libusb-1.0.dll | USB access | LGPL-2.1-or-later | https://libusb.info |
 | Qt 6 DLLs and plugins | OpenRGB's own GUI code, loaded even when headless | LGPL-3.0 and others | https://www.qt.io |
 
-The PawnIO **driver** is not distributed here. Setup installs it with `winget install namazso.PawnIO`. Its repository (https://github.com/namazso/PawnIO) lists GPL-2.0 (version 2 or later) with an exception for combining it with LGPL programs and with modules that talk to it only through its device IO-control interface. pawnio.eu states no redistribution terms, so this project does not bundle the driver or its installer.
+The PawnIO **driver** is not distributed here. Setup downloads the author's installer (`PawnIO_setup.exe`, release 2.2.0 of github.com/namazso/PawnIO.Setup) at install time and runs it only if its SHA-256 matches the one pinned in `install.ps1`. Its repository (https://github.com/namazso/PawnIO) lists GPL-2.0 (version 2 or later) with an exception for combining it with LGPL programs and with modules that talk to it only through its device IO-control interface. pawnio.eu states no redistribution terms, so this project does not bundle the driver or its installer.
 
 ## Python packages
 
