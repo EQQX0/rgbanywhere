@@ -83,7 +83,7 @@ Most devices can't report the colors they show. OpenRGB then reads back Direct, 
 
 | Choice | What happens |
 |--------|--------------|
-| Leave as is (default) | RGB Anywhere hands the device back and stops changing it. It keeps its current color until its own app sets it again; the app names that app (Razer Synapse, iCUE, Armoury Crate, G HUB, ...). Open it and it puts its profile back. |
+| Leave as is (default) | RGB Anywhere hands the device back and stops changing it, then restarts (or starts) the device's own app so it sends its lighting profile again, effects included: Logitech G HUB, Corsair iCUE, Razer Synapse, SteelSeries GG and NZXT CAM. Armoury Crate, MSI Center and others it can't restart are named for you to open. A device whose app isn't installed keeps its current color. |
 | Built-in effect | The device's own rainbow-like effect (Spectrum Cycle, Rainbow Wave, ...), close to how most devices look out of the box. |
 | Color | A static color you pick. |
 

@@ -10,7 +10,8 @@ Usage:
   python rgb.py ram=B32A00 fans=B32A00   per-group color (ram, fans, keyboard, mouse, gpu, audio, other); keeps the rest
   python rgb.py original        put every device back the way it was before RGB Anywhere first changed it
   python rgb.py brightness=60   0-100, scales every color
-  python rgb.py --restore       the same as "original" once, without saving it (Uninstall uses it)
+  python rgb.py --restore       the same as "original" once, without saving it, then restarts the vendor apps of the
+                                devices it handed back (Uninstall uses it)
   python rgb.py --diagnose      what was found and why devices or colors may be missing (changes nothing);
                                 also saved to logs\\diagnose-<time>.txt
 """
@@ -454,6 +455,12 @@ def handback_message(done=None):
         " Pick an exit colour for them.")
 
 
+def handback_apps(done=None):
+    """The vendor apps of the devices the latest restore handed back."""
+    done = LAST_RESTORE if done is None else done
+    return sorted({h["app"] for h in done.get("handed_back") or [] if h["app"]})
+
+
 def apply(client, state, log=print):
     """Send the state to every device. Returns how many devices failed (a stale connection fails them all)."""
     mode = state["mode"]
@@ -659,7 +666,10 @@ def _main():
     if "--diagnose" in args:
         sys.exit(diagnose())
     if "--restore" in args:  # Uninstall.exe, before it removes the daemon: hand the devices back, change nothing else
-        sys.exit(1 if restore(connect(wait=20), state=state) else 0)
+        failed = restore(connect(wait=20), state=state)
+        import handback
+        print(handback.summary(handback.restart(handback_apps())) or "nothing to hand back")
+        sys.exit(1 if failed else 0)
     unknown = [a for a in args if a.startswith("--") and a != "--restart"]
     if unknown:
         sys.exit("unknown option %s. See the usage at the top of rgb.py." % " ".join(unknown))

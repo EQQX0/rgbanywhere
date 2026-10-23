@@ -43,6 +43,7 @@ log = applog.get("app")
 plog = applog.get("phone")
 
 import cooler  # noqa: E402
+import handback  # noqa: E402
 import icue  # noqa: E402
 import media  # noqa: E402
 import pystray  # noqa: E402
@@ -1023,7 +1024,7 @@ class App:
                 failed = rgb.apply(client, st, log=self._rgb_log)
                 told = rgb.handback_message() if st.get("mode") == "original" else ""
                 if told and told != self.handback_told:  # once per visit to Original, not on every rescan
-                    self.js("rgbToast", told, "info")
+                    self.hand_back(rgb.handback_apps(), told)
                 self.handback_told = told
                 if failed:
                     # some/all devices failed: OpenRGB probably restarted (Rescan, sleep). Reconnect once and retry.
@@ -1042,6 +1043,18 @@ class App:
                 # the daemon answers with OpenRGB's start error when that is the problem (see rgbd._need_core)
                 self.set_status("OpenRGB did not start" if "OpenRGB did not start" in str(e) else
                                 "Lighting service not running", "bad")
+
+    def hand_back(self, apps, fallback):
+        """Restart the vendor apps of the devices Original handed back, so they send their own lighting again (in a
+        thread: restarting an app takes a few seconds), and tell the user what happened."""
+        def go():
+            try:
+                msg = handback.summary(handback.restart(apps)) or fallback
+            except Exception:
+                log.exception("hand back failed")
+                msg = fallback
+            self.js("rgbToast", msg, "info")
+        threading.Thread(target=go, daemon=True, name="handback").start()
 
     def idle_watch(self):
         """Rescan when the user comes back to an idle PC, to take the keyboard and mouse back (see IDLE_AFTER)."""
