@@ -21,7 +21,7 @@ Tested on one PC only (Windows 11):
 
 OpenRGB 1.0 supports keyboards, mice, motherboards, GPUs, RAM, fans, coolers and strips from many brands. Only the hardware above has been tried here.
 
-OpenRGB probes many buses, including SMBus on the motherboard, including SMBus on the motherboard. Close OpenRGB and iCUE before you start this app.
+OpenRGB probes many buses, including SMBus on the motherboard. Close OpenRGB and iCUE before you start this app.
 
 **Install on a second PC is untested.** The bundled-OpenRGB build has not been run against real hardware yet. Expect problems and read `logs\`.
 
@@ -47,7 +47,13 @@ You need Windows 10 or 11 and Python 3.10+ (tick "Add to PATH"). In PowerShell, 
 powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing, registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
+`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script installs with winget when it is missing. USB devices work without it.
+
+The unit tests need only Python and `openrgb-python`. They run against a stub OpenRGB server and touch no hardware:
+
+```
+python -m unittest discover -s tests -v
+```
 
 To build the Android app, run `android/build.ps1`. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
 

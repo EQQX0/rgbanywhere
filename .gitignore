@@ -39,9 +39,10 @@ __pycache__/
 nircmd.exe
 HANDOFF.md
 
-# Release packaging
+# Release packaging and install logs
 dist/
 build_all.log
+install.log
 
 installer/*.exe
 installer/*.o

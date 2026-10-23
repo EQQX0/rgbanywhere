@@ -5,4 +5,5 @@ pillow-heif>=1.0
 imageio-ffmpeg>=0.6
 qrcode>=8.0
 pywin32>=306
-openrgb-python>=0.3.8
+# Pinned: rgbcore_client.SdkBackend works around this version's behaviour (see the notes there)
+openrgb-python==0.3.8
