@@ -188,6 +188,10 @@ class SdkBackendTest(unittest.TestCase):
             self.b.resize_zone(4, 0, 10)  # no zones at all
         self.assertEqual(self.sent("resize"), [])
 
+    def test_requests_are_not_held_back_by_nagle(self):
+        import socket
+        self.assertTrue(self.b._cli.comms.sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY))
+
     def test_debug_and_bad_device(self):
         d = self.b.debug()
         self.assertIsNone(d["i2c_buses"])

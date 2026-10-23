@@ -352,6 +352,9 @@ class SdkBackend:
             try:
                 cli = OpenRGBClient("127.0.0.1", self.port, "RGB Anywhere", protocol_version=PROTOCOL)
                 if cli.protocol_version == PROTOCOL:
+                    # openrgb-python sends each request's header and body separately; without this every request
+                    # waits for the server's delayed ACK (40 ms on Linux; Windows may delay ACKs up to 200 ms)
+                    cli.comms.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                     self._cli = cli
                     return
                 # openrgb-python waits 1 s for the version answer and otherwise falls back to protocol 0, which
