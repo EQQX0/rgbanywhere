@@ -137,6 +137,8 @@ class Handler(socketserver.StreamRequestHandler):
                 _need_core().resize_zone(req["dev"], req["zone"], req["leds"], key=req.get("key")); res = None
             elif cmd == "rescan":
                 _rescan(); res = None
+            elif cmd == "busy":  # a start, rescan or re-apply is running (the app waits for a rescan to end)
+                res = _busy.locked()
             else:
                 raise ValueError("unknown command %r" % cmd)
             out = {"ok": True, "result": res}

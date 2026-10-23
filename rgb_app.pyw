@@ -925,15 +925,12 @@ class App:
         applog.event("openrgb_rescan", ok=ok, error=None if ok else (r.stdout + r.stderr).strip()[:200])
 
         def later():
-            # The task closes OpenRGB, starts it again and waits for detection. Connect once it is done:
-            # connecting while OpenRGB is still down would start a second copy of it.
-            time.sleep(3)
-            for _ in range(90):  # up to 45 s: the task also stops and starts DeepCool's helper around the restart
-                q = subprocess.run(["schtasks", "/query", "/tn", rgb.rgbcore_client.TASK_RESCAN, "/fo", "csv", "/nh"], capture_output=True,
-                                   text=True, errors="ignore", creationflags=NO_WINDOW)
-                if "Running" not in q.stdout:
-                    break
-                time.sleep(0.5)
+            # The task restarts OpenRGB in the daemon and waits for detection. Connect once it is done, so the RAM
+            # check after a rescan looks at the new device list.
+            try:
+                rgb.wait_for_rescan(rgb.daemon(wait=10))
+            except Exception as e:
+                log.warning("couldn't follow the rescan (%s: %s); connecting anyway", type(e).__name__, e)
             self.jobs.put("connect")
         threading.Thread(target=later, daemon=True, name="rescan-wait").start()
 

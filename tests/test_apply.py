@@ -128,6 +128,11 @@ class DaemonTest(Through, Setup):
         self.remote = rc.RemoteBackend(port=self.daemon.server_address[1], timeout=20)
         self.client = rc.Client(self.remote)
 
+    def test_busy(self):
+        self.assertIs(self.remote.request("busy"), False)
+        with rgbd._busy:
+            self.assertIs(self.remote.request("busy"), True)
+
     def test_bad_token_and_unknown_command(self):
         self.remote._token = "wrong"
         with self.assertRaisesRegex(RuntimeError, "bad token"):
@@ -154,6 +159,31 @@ class DaemonTest(Through, Setup):
             d = self.remote.debug()
         self.assertEqual(d["core"]["start_error"], "TimeoutError: no port")
         self.assertEqual(d["devices"], [])
+
+
+class RescanWaitTest(unittest.TestCase):
+    def wait(self, answers, **kw):
+        clock = [0.0]
+        backend = mock.Mock()
+        backend.request.side_effect = lambda cmd: answers.pop(0) if answers else False
+
+        def sleep(s):
+            clock[0] += s
+        return rgb.wait_for_rescan(backend, sleep=sleep, clock=lambda: clock[0], **kw), clock[0]
+
+    def test_waits_for_the_rescan_to_start_and_end(self):
+        self.assertEqual(self.wait([False, False, True, True, True, False]), (True, 2.5))
+
+    def test_gives_up_waiting_for_a_start(self):
+        self.assertEqual(self.wait([False] * 100, start=3), (False, 3.5))
+
+    def test_timeout(self):
+        self.assertEqual(self.wait([True] * 1000, timeout=5)[0], False)
+
+    def test_daemon_reports_busy(self):
+        self.assertFalse(rgbd._busy.locked())
+        with rgbd._busy:
+            self.assertTrue(rgbd._busy.locked())
 
 
 class RulesTest(unittest.TestCase):

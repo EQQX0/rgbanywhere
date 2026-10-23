@@ -188,6 +188,20 @@ def daemon(wait=30):
     return _retry(lambda: rgbcore_client.RemoteBackend(timeout=60), wait)
 
 
+def wait_for_rescan(backend, start=10, timeout=180, sleep=time.sleep, clock=time.time):
+    """Wait until the daemon has started and finished a rescan. The rescan task takes a few seconds to reach the
+    daemon, so wait up to `start` seconds to see it busy. Returns True if it was seen finishing."""
+    t0, seen = clock(), False
+    while clock() - t0 < timeout:
+        busy = backend.request("busy")
+        if busy:
+            seen = True
+        elif seen or clock() - t0 > start:
+            return seen
+        sleep(0.5)
+    return False
+
+
 def _retry(make, wait):
     """make() until it works, starting the daemon's task after the first failure."""
     last = None
