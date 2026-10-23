@@ -220,6 +220,17 @@ class RestartTest(Base):
         self.assertEqual(b.set_colors(0, [0x0000FF] * 3, key=board_key), 1)
         self.assertEqual(srv.log[-1], ("mode", 2, "Static"))
 
+    def test_renumbering_notice_is_read_before_a_write(self):
+        srv = self.server()
+        b = self.backend(port=srv.port, spawn=False)
+        with srv.guard:
+            srv.devices.reverse()  # OpenRGB renumbered its devices (hotplug, detection still running) ...
+        srv.notify(100)  # ... and said so with DEVICE_LIST_UPDATED, which nobody has read yet
+        time.sleep(0.2)
+        self.assertEqual(b.set_colors(0, [0x0000FF] * 3, key=["Board", "loc"]), 1)
+        self.assertEqual(srv.log, [("mode", 2, "Static")])
+        self.assertEqual(srv.connects, 1)  # right the first time, not after a failed write and a reconnect
+
     def test_unknown_key(self):
         srv = self.server()
         b = self.backend(port=srv.port, spawn=False)

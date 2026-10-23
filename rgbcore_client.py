@@ -485,27 +485,29 @@ class SdkBackend:
             self._restart("OpenRGB does not answer (%s)" % e)
 
     @staticmethod
-    def _peer_closed(cli):
-        """True when OpenRGB closed the connection. openrgb-python itself only notices after waiting 10 s for a reply."""
+    def _socket_state(cli):
+        """"closed" when OpenRGB closed the connection (openrgb-python itself only notices after waiting 10 s for a
+        reply), "pending" when it sent something nobody asked for yet (every reply is read in full, so that is a notice
+        such as DEVICE_LIST_UPDATED), else "idle"."""
         s = cli.comms.sock
         if s is None:
-            return True
+            return "closed"
         try:
             s.setblocking(False)
             try:
-                return s.recv(1, socket.MSG_PEEK) == b""
+                return "closed" if s.recv(1, socket.MSG_PEEK) == b"" else "pending"
             finally:
                 s.settimeout(10.0)  # what openrgb-python sets after connecting
         except BlockingIOError:
-            return False  # open, nothing waiting
+            return "idle"
         except OSError:
-            return True
+            return "closed"
 
     def _ensure(self):
         """The client, reconnecting (or starting OpenRGB again if it exited) when the connection is gone."""
         if self.spawn and (self._proc is None or self._proc.poll() is not None):
             self._restart("OpenRGB exited (code %s)" % (self._proc.returncode if self._proc is not None else "?"))
-        elif self._cli is None or self._peer_closed(self._cli):
+        elif self._cli is None or self._socket_state(self._cli) == "closed":
             self._reconnect("the SDK connection was closed")
         return self._cli
 
@@ -533,6 +535,10 @@ class SdkBackend:
                 cli = self._ensure()
                 dog = self._watchdog(cli)
                 try:
+                    if self._socket_state(cli) == "pending":
+                        # OpenRGB may have renumbered its devices; read the notice and the new list before fn looks
+                        # a device up, so a write never goes to the index another device now has
+                        cli.update()
                     return fn(cli)
                 except (RuntimeError, *_sdk_errors()) as e:
                     # A reply broken off by a reset makes openrgb-python release its lock twice; that RuntimeError
