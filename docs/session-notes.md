@@ -2,7 +2,7 @@
 
 ## Report (kept current; read this first)
 
-State: tasks 1 to 8 of the brief are done and pushed. Nothing here has run on real hardware or against the real OpenRGB.exe. CI (`.github/workflows/tests.yml`) runs the unit tests on Ubuntu and Windows, Python 3.10 and 3.13.
+State: tasks 1 to 8 of the brief are done and pushed; a fresh-eyes pass is under way. Nothing here has run on real hardware or against the real OpenRGB.exe. CI (`.github/workflows/tests.yml`) runs the unit tests on Ubuntu and Windows, Python 3.10 and 3.13.
 
 Fixed:
 1. OpenRGB crash, hang, slow start, busy port, SDK timeouts, cut-off or reset replies: reconnect, restart (max 3 in 5 min), retry once.
@@ -16,8 +16,9 @@ Fixed:
 9. fetch-openrgb.ps1: TLS 1.2, either zip layout, fetched-from.txt; openrgb-python pinned to 0.3.8.
 10. --diagnose works without OpenRGB or the daemon and gives one hint per failure.
 11. THIRD_PARTY_LICENSES.md checked against upstream where possible.
+12. After a rescan the app follows the daemon, not schtasks' English "Running"; a renumbering notice is read before any write; app worker race fixed.
 
-Tests: 78, all passing on Linux with Python 3.10 and 3.13 (`python -m unittest discover -s tests -v`). Files: test_sdk_backend, test_sdk_failures, test_apply, test_argb, test_diag, test_repo.
+Tests: 96, all passing on Linux (Python 3.10 and 3.13) and in CI on Windows (`python -m unittest discover -s tests -v`). Files: test_sdk_backend, test_sdk_failures, test_apply, test_argb, test_diag, test_repo, test_rgbctl.
 
 Unverified on hardware: everything touching OpenRGB.exe, PawnIO, RAM, ARGB sizing, colours, monitors-off, the job object, leftover-process cleanup, Setup's update path, package.ps1 output.
 
@@ -56,6 +57,13 @@ These change lights or processes:
 10. 413b86f Skip packet 160; resize comments corrected from the 1.0 source.
 11. 1968a48 Retry on openrgb-python's double lock release (found by CI on Windows).
 12. 0321743 THIRD_PARTY_LICENSES.md.
+13. 9db4cf8 App follows a rescan through the daemon's "busy" answer.
+14. fea3862 rgb.py command line refuses unknown groups; fixed 3 s wait removed.
+15. f187504 Daemon request timeout and size cap.
+16. 03d4319 App lights worker keeps one client reference per job (not run: needs pywebview).
+17. 4e438f8 Device-list notice read before resolving a device.
+18. a3c7b94 rgbctl tests.
+19. 9218eea Daemon reports another program on its port.
 
 ## Next
 
