@@ -38,6 +38,18 @@ def _running_conflicts():
     return sorted({label for exe, label in CONFLICTS.items() if exe in names})
 
 
+def _log_problems(path, n=12):
+    """The last error and warning lines of the core's own log (OpenRGB_*.log), without its long HTML dialogs."""
+    if not path:
+        return []
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = [l.strip() for l in f if "][Error" in l or "][Warning" in l]
+    except OSError:
+        return []
+    return [l[:300] for l in lines[-n:]]
+
+
 def _device(d):
     modes = [{"name": m.name, "colors": m.color_kind} for m in d.modes]
     active = d.modes[d.active_mode].name if 0 <= d.active_mode < len(d.modes) else "?"
@@ -61,6 +73,7 @@ def collect(core, client):
         "core_version": core.version(),
         "core": core.debug(),
         "core_log": logs[-1] if logs else None,
+        "core_log_problems": _log_problems(logs[-1] if logs else None),
         "pawnio": {
             "service": rgb.service_state(PAWNIO_SERVICE),
             "lib": os.path.exists(os.path.join(core_dir, "PawnIOLib.dll")),
@@ -86,6 +99,17 @@ def hints(d):
         out.append("The lighting daemon is not running as admin, so RAM and other SMBus devices cannot be found. "
                    "Start it through its task: schtasks /run /tn \"%s\"" % rc.TASK_LIGHTING)
     svc = d["pawnio"]["service"]
+    problems = " ".join(d.get("core_log_problems", []))
+    if "Could not open PawnIO" in problems and svc == "RUNNING":
+        out.append("A service named PawnIO runs, but the core cannot open the PawnIO device, so the RAM's SMBus stays closed. "
+                   "This is usually an old or leftover driver (for example after deleting its folder). Reinstall it: "
+                   "'winget uninstall namazso.PawnIO', then 'sc.exe delete PawnIO' if the service is still listed, restart the PC, "
+                   "'winget install namazso.PawnIO', restart again.")
+    elif "Permission Denied, PawnIO" in problems:
+        out.append("PawnIO refused access: the core was not running as admin when it detected devices.")
+    elif "PawnIO initialization aborted (code=" in problems:
+        out.append("PawnIO opened but rejected a module. The installed PawnIO may be too old for these modules: update it with "
+                   "'winget upgrade namazso.PawnIO'.")
     if svc is None:
         out.append("The PawnIO driver is not installed, so RAM lights cannot be reached. Install it with "
                    "'winget install namazso.PawnIO', restart the PC, then press Rescan.")
@@ -97,7 +121,7 @@ def hints(d):
     board = [b for b in buses or [] if b["name"].startswith("PawnIO")]
     if buses is None:
         out.append("rgbcore.dll is older than this app and reports no SMBus details. Rebuild it with build.ps1 or reinstall.")
-    elif not board and d["elevated"] and svc == "RUNNING":
+    elif not board and d["elevated"] and svc == "RUNNING" and "PawnIO" not in problems:
         out.append("PawnIO runs but no motherboard SMBus was opened. Search the core log for 'PawnIO' to see why.")
     elif board and not ram:
         out.append("The motherboard SMBus is open but no RAM was found. Close other RGB programs, then press Rescan.")
@@ -148,6 +172,9 @@ def text(d):
             lines.append("     zones: %s" % "; ".join(x["zones"]))
     lines.append("")
     lines.append("Core log: %s" % (d["core_log"] or "none yet"))
+    if d.get("core_log_problems"):
+        lines.append("Last errors and warnings in it:")
+        lines += ["  " + l for l in d["core_log_problems"]]
     lines.append("")
     if d["hints"]:
         lines.append("Likely problems:")
