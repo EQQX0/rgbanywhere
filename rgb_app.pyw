@@ -40,6 +40,36 @@ import applog  # noqa: E402
 
 applog.setup("app")  # before anything else, so even a failure while starting up is recorded
 os.makedirs(applog.DATA_DIR, exist_ok=True)  # settings, tokens and caches (see applog.DATA_DIR)
+
+# Program files an install before 0.3 left in the data folder. install.ps1 (admin) moved its settings; the files are
+# removed here, as the user, because deleting in a folder a normal process controls is never done as admin.
+LEGACY_CODE_DIRS = ("python", "openrgb", "ui", "android", "installer", "__pycache__", os.path.join("cache", "core"))
+LEGACY_CODE_EXT = (".py", ".pyw", ".ps1", ".cmd", ".ico", ".exe")
+LEGACY_CODE_FILES = ("version.txt", "requirements.txt", "LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "README.md",
+                     "config.example.json", "config.json", "original.json", "rgbd.token", "install.log")
+
+
+def remove_legacy_code(data=None):
+    """Remove an old install's program files from the data folder, once the code runs from Program Files."""
+    data = data or applog.DATA_DIR
+    if not applog.PROTECTED or os.path.normcase(data) == os.path.normcase(HERE) or \
+            not os.path.isfile(os.path.join(data, "rgbd.py")):
+        return []
+    gone = []
+    for d in LEGACY_CODE_DIRS:
+        p = os.path.join(data, d)
+        if os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+            gone.append(d)
+    for name in os.listdir(data):
+        p = os.path.join(data, name)
+        if os.path.isfile(p) and (name.lower().endswith(LEGACY_CODE_EXT) or name in LEGACY_CODE_FILES):
+            try:
+                os.remove(p)
+                gone.append(name)
+            except OSError:
+                pass
+    return gone
 log = applog.get("app")
 plog = applog.get("phone")
 
@@ -1734,6 +1764,13 @@ def main():
         return
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     log.info("packages: %s", "; ".join(applog._versions()))
+    try:
+        gone = remove_legacy_code()
+        if gone:
+            log.info("removed the program files of the install before 0.3 from %s: %s", applog.DATA_DIR, ", ".join(gone))
+            applog.event("legacy_cleanup", ok=True, removed=gone)
+    except Exception:
+        log.exception("could not remove the old program files from %s", applog.DATA_DIR)
 
     http = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=http.serve_forever, daemon=True, name="local-http").start()

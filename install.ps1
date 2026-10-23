@@ -30,30 +30,25 @@ $user = "$env:USERDOMAIN\$env:USERNAME"   # the elevated shell is still this use
 $data = Join-Path $env:LOCALAPPDATA 'RGB Anywhere'
 $protected = [bool](@($env:ProgramFiles, $env:ProgramW6432) | Where-Object { $_ -and
         $here.StartsWith($_.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) })
-function Remove-Tree($path) {
-    # rmdir removes a junction itself instead of what it points to, unlike Remove-Item -Recurse in Windows PowerShell
-    if (Test-Path -LiteralPath $path) { & cmd.exe /c "rmdir /s /q `"$path`"" }
-}
 if ($protected) {
     # Owned by Administrators, with Program Files' own permissions (admins and SYSTEM change, users read and run)
     & icacls.exe $here /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
     & icacls.exe $here /reset /T /C /Q | Out-Null
-    # An install before 0.3 ran from $data. Keep its settings there, bring what the daemon owns here, remove its code.
+    # An install before 0.3 ran from $data. Bring what the daemon owns (its settings and saved lighting) here; the
+    # settings stay there. The old code is removed by the app on its next start, without admin: deleting in a folder
+    # a normal process controls is never done as admin, where a swapped folder could make it delete elsewhere.
     if ((Test-Path (Join-Path $data 'rgbd.py')) -and ($data -ne $here)) {
         Write-Host "Moving the earlier install out of $data (settings stay there)"
         foreach ($f in 'config.json', 'original.json') {
             $src = Join-Path $data $f
             if ((Test-Path -LiteralPath $src) -and -not (Test-Path (Join-Path $here $f))) {
-                try { Get-Content -LiteralPath $src -Raw | ConvertFrom-Json | Out-Null; Copy-Item -LiteralPath $src (Join-Path $here $f) }
-                catch { Write-Warning "$f from the earlier install is not valid JSON; not copied" }
+                try {
+                    $text = [IO.File]::ReadAllText($src)
+                    $text | ConvertFrom-Json | Out-Null   # only settings, nothing else, reach the admin side
+                    [IO.File]::WriteAllText((Join-Path $here $f), $text, (New-Object Text.UTF8Encoding $false))
+                } catch { Write-Warning "$f from the earlier install could not be read as JSON; not copied" }
             }
         }
-        foreach ($d in 'python', 'openrgb', 'ui', 'android', 'installer', '__pycache__', 'cache\core') { Remove-Tree (Join-Path $data $d) }
-        Get-ChildItem -LiteralPath $data -File -Force | Where-Object {
-            $_.Extension -in '.py', '.pyw', '.ps1', '.cmd', '.ico', '.exe' -or
-            $_.Name -in 'version.txt', 'requirements.txt', 'LICENSE', 'NOTICE', 'THIRD_PARTY_LICENSES.md', 'README.md',
-                        'config.example.json', 'config.json', 'original.json', 'rgbd.token', 'install.log'
-        } | Remove-Item -Force -ErrorAction SilentlyContinue
     }
 } else {
     Write-Warning ("This copy is not in Program Files. The lighting service runs its code as admin from $here, which " +

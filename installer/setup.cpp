@@ -105,10 +105,12 @@ static bool download(HINTERNET net, const std::wstring &url, std::vector<char> *
     return ok && !g_cancel;
 }
 
-static std::string sha256_file(const std::wstring &path)
+// SHA-256 of `len` bytes of a file from `from` (the whole file by default)
+static std::string sha256_file(const std::wstring &path, unsigned long long from = 0, unsigned long long len = ~0ULL)
 {
     FILE *f = _wfopen(path.c_str(), L"rb");
     if (!f) return "";
+    if (_fseeki64(f, (long long)from, SEEK_SET) != 0) { fclose(f); return ""; }
     HCRYPTPROV prov = 0;
     HCRYPTHASH hash = 0;
     if (!CryptAcquireContextW(&prov, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT) || !CryptCreateHash(prov, CALG_SHA_256, 0, 0, &hash)) {
@@ -117,7 +119,10 @@ static std::string sha256_file(const std::wstring &path)
     }
     std::vector<BYTE> buf(1 << 16);
     size_t n;
-    while ((n = fread(buf.data(), 1, buf.size(), f)) > 0) CryptHashData(hash, buf.data(), (DWORD)n, 0);
+    while (len && (n = fread(buf.data(), 1, (size_t)std::min<unsigned long long>(buf.size(), len), f)) > 0) {
+        CryptHashData(hash, buf.data(), (DWORD)n, 0);
+        len -= n;
+    }
     fclose(f);
     BYTE d[32];
     DWORD dl = sizeof d;
@@ -265,6 +270,7 @@ static DWORD WINAPI worker(LPVOID p)
     wchar_t tmp[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);
     std::wstring zip = std::wstring(tmp) + ZIPNAME;
+    std::string zip_sha;   // the trusted hash (in this exe, or published with the release), never one of the temp file
 
     Payload pay = find_payload();
     if (pay.found) {
@@ -280,7 +286,8 @@ static DWORD WINAPI worker(LPVOID p)
         }
         post_status(L"Checking the files...");
         post_progress(75);
-        if (sha256_file(zip) != pay.sha) {
+        zip_sha = pay.sha;
+        if (sha256_file(zip) != zip_sha) {
             DeleteFileW(zip.c_str());
             finish(false, L"This Setup file is damaged, so nothing was installed. Download it again.");
             return 0;
@@ -299,6 +306,7 @@ static DWORD WINAPI worker(LPVOID p)
         }
         std::string want(sum.begin(), sum.begin() + 64);
         for (auto &ch : want) ch = (char)tolower(ch);
+        zip_sha = want;
 
         if (!download(net, std::wstring(BASE) + ZIPNAME, NULL, zip, 1, 70, L"Downloading")) {
             InternetCloseHandle(net);
@@ -324,7 +332,9 @@ static DWORD WINAPI worker(LPVOID p)
     GetModuleFileNameW(NULL, self, MAX_PATH);   // Settings > Apps runs it with /uninstall
     std::wstring stub = std::wstring(tmp) + L"RGBAnywhere-Uninstall.exe";
     bool stub_ok = pay.found ? copy_range(self, 0, pay.off, stub, 0, 0, L"") : CopyFileW(self, stub.c_str(), FALSE) != 0;
-    std::string zip_sha = sha256_file(zip), stub_sha = sha256_file(stub);
+    // Both hashes come from sources a normal process can't change: this exe is locked while it runs. Hashing the temp
+    // files here instead would let another process swap them first and have the elevated step accept the swap.
+    std::string stub_sha = pay.found ? sha256_file(self, 0, pay.off) : sha256_file(self);
     auto cleanup = [&]() { DeleteFileW(zip.c_str()); DeleteFileW(stub.c_str()); };
     if (!stub_ok || zip_sha.size() != 64 || stub_sha.size() != 64) {
         cleanup();
