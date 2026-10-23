@@ -130,7 +130,7 @@ class Handler(socketserver.StreamRequestHandler):
             elif cmd == "set_mode":
                 _need_core().set_mode(req["dev"], req["mode"], key=req.get("key")); res = None
             elif cmd == "set_colors":
-                res = _need_core().set_colors(req["dev"], req["colors"], key=req.get("key"))
+                res = _need_core().set_colors(req["dev"], req["colors"], key=req.get("key"), fill=bool(req.get("fill")))
             elif cmd == "debug":
                 res = diag.collect(_core, _client, start_error=_start_error)
             elif cmd == "resize_zone":

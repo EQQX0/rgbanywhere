@@ -13,9 +13,12 @@ import socket
 import socketserver
 import struct
 import sys
+import tempfile
 import threading
 import time
 
+# Keep the app's logs (events.jsonl, rgb.log) out of the checkout. applog reads this when it is first imported.
+os.environ.setdefault("RGB_LOG_DIR", tempfile.mkdtemp(prefix="rgb-test-logs-"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from openrgb import utils as u  # noqa: E402
 

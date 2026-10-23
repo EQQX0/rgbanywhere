@@ -503,11 +503,10 @@ class Api:
         s = self._app.state
         if s.get("mode") == "off":  # lights are off: colours are locked until they're switched back on
             return {"error": "Turn the lights on to change colors."}
-        if target == "all":
-            s["color"], s["groups"] = hexc, {}
-        else:
-            s.setdefault("groups", {})[target] = hexc
-        s["mode"] = "static"
+        try:
+            rgb.set_group_color(s, target, hexc)
+        except ValueError as e:
+            return {"error": str(e)}
         self._app.commit()
 
     def set_brightness(self, v):
@@ -633,7 +632,11 @@ class Api:
             log.warning("accent sync turned off but accent_backup.json is missing; can't restore the original accent")
 
     def monitors_off(self):
-        self._app.monitors_off()
+        done = self._app.monitors_off()
+        if self._source == "cli":  # rgbctl reports the outcome, so wait for it (about 1.5 s)
+            done.join(10)
+            if self._app.monitors_error:
+                return {"error": "Couldn't turn the monitors off: " + self._app.monitors_error}
 
     def calibrate(self, hexc):
         """Show hexc on every device while calibrating; None ends calibration mode."""
@@ -746,6 +749,7 @@ class App:
         self._drop_orphan_profile_files()
         self.status = ["Connecting…", "warn"]
         self.wake_armed_at = 0  # time lights+monitors went off together; 0 = not waiting for input (see wake_watch)
+        self.monitors_error = None  # outcome of the last monitors_off()
         self.test_color = None
         self.test_until = 0
         self.staged = {}  # id -> {"src": path, "name": shown name} for pictures open in the editor
@@ -1299,17 +1303,20 @@ class App:
     # ----- monitors -----
     def monitors_off(self, wake_lights=False):
         """Turn every monitor off through the Windows API. Windows wakes them at the next keyboard or mouse input.
-        wake_lights: the lights went off with them, so that same input switches the lights back on (see wake_watch)."""
+        wake_lights: the lights went off with them, so that same input switches the lights back on (see wake_watch).
+        Returns the thread doing it; monitors_error holds its outcome once it ends (None = done)."""
         def go():
             err = None
             try:
                 # Wait a moment first: the click that asked for it, or a nudge of the mouse right after, would wake them again.
                 time.sleep(1.5)
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
                 # HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2 = off. SendNotifyMessage can't hang on a stuck window.
-                if not ctypes.windll.user32.SendNotifyMessageW(0xFFFF, 0x0112, 0xF170, 2):
-                    err = "SendNotifyMessage failed (error %s)" % ctypes.GetLastError()
+                if not user32.SendNotifyMessageW(0xFFFF, 0x0112, 0xF170, 2):
+                    err = "SendNotifyMessage failed (error %s)" % ctypes.get_last_error()
             except (OSError, AttributeError) as e:
                 err = "%s: %s" % (type(e).__name__, e)
+            self.monitors_error = err
             applog.event("monitors_off", ok=err is None, error=err)
             if err:
                 log.error("couldn't turn the monitors off: %s", err)
@@ -1319,7 +1326,10 @@ class App:
                 log.info("monitors off")
                 if wake_lights:
                     self.wake_armed_at = time.time()
-        threading.Thread(target=go, daemon=True, name="monitors").start()
+        self.monitors_error = None
+        t = threading.Thread(target=go, daemon=True, name="monitors")
+        t.start()
+        return t
 
     def after_remote(self):
         """A phone changed something: bring the desktop window (and tray menu) in line."""

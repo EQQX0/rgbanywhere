@@ -260,6 +260,11 @@ def apply(client, state, log=print):
     for dev in client.devices:
         try:
             want = dev_mode_name(dev, mode)
+            if want is None:  # only effect modes (a fan that only cycles colours): nothing to set, and nothing broke
+                _log.info("%s has no static, direct or custom mode; left as it is (modes: %s)", dev.name,
+                          ", ".join(m.name for m in dev.modes) or "none")
+                log("skip " + dev.name)
+                continue
             if want == "custom":
                 # Corsair RAM sometimes comes up without Direct (OpenRGB misreads its protocol version);
                 # Custom is its per-LED static mode and is always there.
@@ -279,6 +284,9 @@ def apply(client, state, log=print):
                        rgbcore_client.SET_RESULTS.get(how, "?"))
             if how == 2 and mode != "off":
                 _log.info("%s: mode %s takes no colour, so the colour was not applied", dev.name, active.name if active else "?")
+            elif how == 3:
+                _log.warning("%s has no LEDs, so no colour was applied. An addressable header needs a size: see argb_leds "
+                             "in README.md", dev.name)
             log("ok   " + dev.name)
         except Exception as e:
             failed += 1
@@ -291,17 +299,26 @@ def apply(client, state, log=print):
 
 
 def dev_mode_name(dev, mode):
-    """The mode apply() picks for `dev` (same order as in apply)."""
+    """The mode apply() picks for `dev`, or None if it has none that takes a colour we set."""
     names = [m.name.lower() for m in dev.modes]
     if mode in names:
         return mode
-    if mode == "off":
-        return "direct" if "direct" in names else "static"
-    if "static" in names:
-        return "static"
-    if "direct" in names or "custom" not in names:
-        return "direct"
-    return "custom"
+    order = ("direct", "static") if mode == "off" else ("static", "direct", "custom")
+    return next((n for n in order if n in names), None)
+
+
+def set_group_color(state, target, color):
+    """Set `target` ("all" or one of GROUPS) to `color` (a name or hex) in state. Raises ValueError for anything else,
+    so a bad request from the phone or rgbctl never reaches state.json or the devices."""
+    if target != "all" and target not in GROUPS:
+        raise ValueError("unknown target %r (use all, %s)" % (target, ", ".join(GROUPS)))
+    h = to_hex(str(color))
+    if target == "all":
+        state["color"], state["groups"] = h, {}
+    else:
+        state.setdefault("groups", {})[target] = h
+    state["mode"] = "static"
+    return h
 
 
 def diagnose():

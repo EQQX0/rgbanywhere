@@ -115,9 +115,10 @@ class Device:
         raise ValueError("Mode %s not found on %s" % (name, self.name))
 
     def set_color(self, color):
-        """Returns what the backend did: a key of SET_RESULTS."""
+        """The whole device in one colour. Returns what the backend did: a key of SET_RESULTS."""
         rgb = (color.red << 16) | (color.green << 8) | color.blue
-        return self._client._b.set_colors(self._idx, [rgb] * max(self.led_count, 1), key=self.key)
+        # fill: the daemon sizes the list itself, so a zone resized since our last update() is covered too
+        return self._client._b.set_colors(self._idx, [rgb], key=self.key, fill=True)
 
 
 class Client:
@@ -553,10 +554,10 @@ class SdkBackend:
             self._push_mode(d, m)
         self._call(go)
 
-    def set_colors(self, dev, colors, key=None):
+    def set_colors(self, dev, colors, key=None, fill=False):
         """0 = per-LED colours applied, 1 = applied as the mode colour, 2 = the active mode takes no colour,
         3 = the device has no LEDs (an addressable header nobody sized yet). Fewer colours than LEDs leave the rest
-        as they are; more are ignored. A mode colour is the first colour."""
+        as they are; more are ignored; fill=True gives every LED the first colour. A mode colour is the first colour."""
         from openrgb.utils import ModeColors, ModeFlags, RGBColor as ORGBColor
         if not isinstance(colors, (list, tuple)) or not colors:
             raise ValueError("no colours given")
@@ -588,9 +589,12 @@ class SdkBackend:
             if m.color_mode != ModeColors.PER_LED:  # the mode can take per-LED colours but is set to another kind
                 m.color_mode = ModeColors.PER_LED
                 self._push_mode(d, m)
-            cur = list(d.colors)
-            for i in range(min(len(cur), len(colors))):
-                cur[i] = conv(colors[i])
+            if fill:
+                cur = [conv(colors[0])] * len(d.leds)
+            else:
+                cur = list(d.colors)
+                for i in range(min(len(cur), len(colors))):
+                    cur[i] = conv(colors[i])
             d._set_device_colors(cur)
             return 0
         return self._call(go)
@@ -667,8 +671,8 @@ class RemoteBackend:
     def set_mode(self, dev, name, key=None):
         self.request("set_mode", dev=dev, mode=name, key=key)
 
-    def set_colors(self, dev, colors, key=None):
-        return self.request("set_colors", dev=dev, colors=colors, key=key)
+    def set_colors(self, dev, colors, key=None, fill=False):
+        return self.request("set_colors", dev=dev, colors=colors, key=key, fill=fill)
 
     def debug(self):
         return self.request("debug")
