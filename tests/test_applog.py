@@ -4,6 +4,7 @@
   python -m unittest discover -s tests -v
 """
 import json
+import logging
 import os
 import tempfile
 import importlib
@@ -44,6 +45,30 @@ class ReportTest(unittest.TestCase):
                           "core-logs/OpenRGB_20261024_100000.log"])
         self.assertTrue({"core-config/OpenRGB.json", "core-config/Configuration.json", "diagnosis.txt"} <= names)
         self.assertNotIn("secret-token-123", settings)
+
+
+class RedactTest(unittest.TestCase):
+    def test_token_in_a_traceback_is_masked(self):
+        logs = tempfile.TemporaryDirectory()
+        self.addCleanup(logs.cleanup)
+        h = logging.FileHandler(os.path.join(logs.name, "t.log"), encoding="utf-8")
+        h.addFilter(applog._Redact())
+        h.setFormatter(logging.Formatter("%(message)s"))
+        lg = logging.getLogger("rgb.test_redact")
+        lg.propagate = False
+        lg.addHandler(h)
+        self.addCleanup(lg.removeHandler, h)
+        self.addCleanup(h.close)
+        try:
+            raise OSError("GET http://192.168.1.5:47822/?t=abcdefgh12345678 failed")
+        except OSError:
+            lg.exception("phone request failed")
+        h.flush()
+        with open(os.path.join(logs.name, "t.log"), encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("phone request failed", text)
+        self.assertIn("OSError", text)
+        self.assertNotIn("abcdefgh12345678", text)
 
 
 if __name__ == "__main__":
