@@ -29,7 +29,7 @@ class RepoTest(unittest.TestCase):
         old = re.compile(r"rgbcore\.dll|third_party[/\\]|(?<![\w/\\])build\.ps1|(?<![\w.])core[/\\](?!logs)|CMakeLists|cmake", re.I)
         hits = []
         for f in tracked():
-            if f.startswith(("tests/", "docs/")) or f == "installer/build.ps1":
+            if f.startswith(("tests/", "docs/")) or f in ("installer/build.ps1", "installer/bundle.ps1"):
                 continue
             for n, line in enumerate(read(f).splitlines(), 1):
                 for m in old.finditer(line):
@@ -38,6 +38,12 @@ class RepoTest(unittest.TestCase):
                         continue
                     hits.append("%s:%d: %s" % (f, n, line.strip()[:120]))
         self.assertEqual(hits, [])
+
+    def test_pawnio_download_is_pinned(self):
+        ps = read("install.ps1")
+        self.assertRegex(ps, r"\$pawnUrl = 'https://github\.com/namazso/PawnIO\.Setup/releases/download/[\w.]+/PawnIO_setup\.exe'")
+        self.assertRegex(ps, r"\$pawnSha = '[0-9a-f]{64}'")
+        self.assertLess(ps.index("Get-FileHash $setup"), ps.index("Start-Process $setup"))
 
     def test_package_lists_files_that_exist(self):
         files = re.search(r"\$files = (.*?)\nforeach", read("package.ps1"), re.S).group(1)

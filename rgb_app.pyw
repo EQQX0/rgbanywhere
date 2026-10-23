@@ -105,6 +105,9 @@ DEFAULT_PRESETS = [
 
 
 # ---------- cooler preview ----------
+_preview_lock = threading.Lock()  # the watcher, the window's poll and every phone's poll can all land here at once
+
+
 def deepcool_running():
     out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq DeepCool.exe", "/NH"], capture_output=True,
                          text=True, creationflags=NO_WINDOW).stdout
@@ -117,16 +120,17 @@ def cooler_preview():
     st = os.stat(src)
     key = "%d-%d" % (st.st_mtime_ns, st.st_size)
     dst = os.path.join(CACHE, "preview-%s.mp4" % key)
-    if not os.path.exists(dst):
-        os.makedirs(CACHE, exist_ok=True)
-        for old in glob.glob(os.path.join(CACHE, "preview-*.mp4")):
-            try:
-                os.remove(old)
-            except OSError as e:
-                log.debug("couldn't remove old preview %s: %s", old, e)
-        shutil.copy2(src, dst + ".part")
-        os.replace(dst + ".part", dst)
-        log.info("cooler preview refreshed from %s (%d KB)", src, os.path.getsize(dst) // 1024)
+    with _preview_lock:
+        if not os.path.exists(dst):
+            os.makedirs(CACHE, exist_ok=True)
+            for old in glob.glob(os.path.join(CACHE, "preview-*.mp4")):
+                try:
+                    os.remove(old)
+                except OSError as e:
+                    log.debug("couldn't remove old preview %s: %s", old, e)
+            shutil.copy2(src, dst + ".part")
+            os.replace(dst + ".part", dst)
+            log.info("cooler preview refreshed from %s (%d KB)", src, os.path.getsize(dst) // 1024)
     return key, dst, src
 
 
@@ -462,7 +466,10 @@ class ControlHandler(BaseHTTPRequestHandler):
         if not self.allowed():
             return self.send_json({"error": "unauthorized"}, 401)
         if self.path == "/status":
-            return self.send_json(Api(self.app, source="cli").init())
+            try:
+                return self.send_json(Api(self.app, source="cli").init())
+            except Exception as e:  # logged by Api; without this the connection just drops and rgbctl says the app is not running
+                return self.send_json({"error": "%s: %s" % (type(e).__name__, e)}, 500)
         self.send_json({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -521,7 +528,10 @@ class Api:
             self._app.monitors_off(wake_lights=True)
 
     def apply_preset(self, i):
-        return self._app.apply_preset(self._app.presets[int(i)])
+        presets = self._app.presets
+        if not 0 <= int(i) < len(presets):  # a negative number would otherwise pick from the end
+            return {"error": "There is no preset %s (0 to %d)." % (i, len(presets) - 1)}
+        return self._app.apply_preset(presets[int(i)])
 
     def set_calibration(self, group, gains):
         if group in rgb.GROUPS:
@@ -782,6 +792,7 @@ class App:
         self.jobs = queue.Queue()
         self.quitting = False
         self.screen_busy = False
+        self._screen_lock = threading.Lock()  # makes "not busy, so start" one step (see run_screen)
         self._screen_dark = None  # does the cooler show the black clip? None until first checked (see sync_screen)
         self._screen_gave_up = None  # the direction (dark or not) whose last attempt failed
         self.last_cooler = None
@@ -816,6 +827,8 @@ class App:
         after_job: called when a screen job ends. A job that failed isn't repeated that way (each try restarts
         DeepCool); the next lights change tries again.
         """
+        if not cooler.installed():  # no DeepCool here: nothing to black out, and no log to fail on at every colour change
+            return
         want_dark = self.state["mode"] == "off"
         if not after_job:
             self._screen_gave_up = None
@@ -1010,33 +1023,40 @@ class App:
         """Rescan when the user comes back to an idle PC, to take the keyboard and mouse back (see IDLE_AFTER)."""
         away = 0
         while True:
-            idle = idle_seconds()
-            if idle >= IDLE_AFTER:
-                away = idle
-            elif away:
-                # Not while a rescan is already under way, and not under iCUE: detecting the RAM while iCUE
-                # is talking to it is what knocks sticks out (see icue.py).
-                skip = "not connected" if self.client is None else "iCUE is open" if icue.running() else None
-                log.info("back after %ds idle; %s", away, "no rescan: " + skip if skip else "rescanning")
-                applog.event("idle_return", ok=True, idle_s=away, skipped=skip)
+            try:
+                idle = idle_seconds()
+                if idle >= IDLE_AFTER:
+                    away = idle
+                elif away:
+                    # Not while a rescan is already under way, and not under iCUE: detecting the RAM while iCUE
+                    # is talking to it is what knocks sticks out (see icue.py).
+                    skip = "not connected" if self.client is None else "iCUE is open" if icue.running() else None
+                    log.info("back after %ds idle; %s", away, "no rescan: " + skip if skip else "rescanning")
+                    applog.event("idle_return", ok=True, idle_s=away, skipped=skip)
+                    away = 0
+                    if not skip:
+                        self.rescan()
+            except Exception:
+                log.exception("idle watcher hit an error (it keeps running)")
                 away = 0
-                if not skip:
-                    self.rescan()
             time.sleep(2)
 
     def wake_watch(self):
         """Lights switched off together with the monitors come back on at the first keyboard/mouse input, the same
         moment Windows wakes the monitors. Armed by monitors_off(wake_lights=True) once the monitors really went off."""
         while True:
-            armed = self.wake_armed_at
-            if armed:
-                if self.state.get("mode") != "off":
-                    self.wake_armed_at = 0  # someone switched the lights on another way
-                elif time.time() - armed > WAKE_GRACE and idle_ms() < 1000:
-                    self.wake_armed_at = 0
-                    log.info("input after lights+monitors off; lights on")
-                    applog.event("wake_lights", ok=True)
-                    self.set_mode("static")
+            try:
+                armed = self.wake_armed_at
+                if armed:
+                    if self.state.get("mode") != "off":
+                        self.wake_armed_at = 0  # someone switched the lights on another way
+                    elif time.time() - armed > WAKE_GRACE and idle_ms() < 1000:
+                        self.wake_armed_at = 0
+                        log.info("input after lights+monitors off; lights on")
+                        applog.event("wake_lights", ok=True)
+                        self.set_mode("static")
+            except Exception:
+                log.exception("wake watcher hit an error (it keeps running)")
             time.sleep(0.25)
 
     @staticmethod
@@ -1093,10 +1113,11 @@ class App:
 
     def run_screen(self, fn, busy, done, kind="cooler_apply", meta=None, src=None):
         """Run a slow cooler job in a thread. Every attempt, successful or not, is written to events.jsonl."""
-        if self.screen_busy:
-            log.warning("%s ignored: the cooler screen is busy", kind)
-            return
-        self.screen_busy = True
+        with self._screen_lock:
+            if self.screen_busy:
+                log.warning("%s ignored: the cooler screen is busy", kind)
+                return
+            self.screen_busy = True
         self.busy_text, self.last_msg = busy, ["", ""]  # mirrored to phones via /api/poll
         self.js("rgbMsg", "", "")
         self.js("rgbBusy", busy)
@@ -1418,6 +1439,7 @@ class App:
     def set_screen(self, path, shown, spec=None, source="desktop"):
         def go():
             cooler.set_screen(path, spec)
+            self._screen_dark = False  # the new picture replaced the black clip; sync_screen blanks it again if the lights are off
             key, _, _ = cooler_preview()
             self.state["cooler_name"], self.state["cooler_key"] = shown, key
             rgb.save_state(self.state)
@@ -1429,6 +1451,7 @@ class App:
         def go():
             if not cooler.restore():
                 raise RuntimeError("Nothing to restore")
+            self._screen_dark = False  # the original replaced the black clip (see set_screen)
             self.state.pop("cooler_name", None)
             self.state.pop("cooler_key", None)
             rgb.save_state(self.state)

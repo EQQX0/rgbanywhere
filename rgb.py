@@ -465,6 +465,27 @@ def start_helper():
         applog.event("helper_start", ok=False, error="sc start exit %s" % r.returncode)
 
 
+def start_pawnio(name="PawnIO", wait=10):
+    """Start the PawnIO driver if it is installed but stopped. It is a demand-start service, so after a restart nothing
+    else starts it, and OpenRGB then finds no SMBus (no RAM). Returns True if it was started here. Needs admin."""
+    if service_state(name) != "STOPPED":
+        return False
+    r = _quiet("sc", "start", name)
+    t0 = time.time()
+    while service_state(name) not in ("RUNNING", None):
+        if time.time() - t0 > wait:
+            break
+        time.sleep(0.25)
+    state = service_state(name)
+    _log.info("PawnIO was stopped; sc start %s -> exit %s, now %s", name, r.returncode, state)
+    if state != "RUNNING":
+        _log.warning("couldn't start %s (exit %s): %s", name, r.returncode, (r.stdout + r.stderr).strip()[:150])
+        applog.event("pawnio_start", ok=False, error="sc start exit %s, state %s" % (r.returncode, state))
+        return False
+    applog.event("pawnio_start", ok=True)
+    return True
+
+
 def main():
     applog.setup("lights-cli")
     try:

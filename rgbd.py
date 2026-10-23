@@ -57,6 +57,7 @@ def _start_core():
     app and --diagnose can show why, and a rescan tries again."""
     global _core, _client, _start_error
     core = None
+    rgb.start_pawnio()  # OpenRGB opens the driver while it detects; a stopped one means no RAM
     try:
         core = rc.SdkBackend(log_level=rgb.CFG.get("core_log_level", "info"), on_restart=_after_restart)
         _client, _core, _start_error = rc.Client(core), core, None
@@ -96,6 +97,7 @@ def _rescan():
                 if _core is None:
                     raise RuntimeError("OpenRGB did not start: %s" % _start_error)
                 return
+            rgb.start_pawnio()
             _core.rescan()
             time.sleep(1)
             _client.update()

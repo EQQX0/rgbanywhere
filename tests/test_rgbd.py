@@ -18,6 +18,7 @@ class DaemonLogicTest(unittest.TestCase):
     def setUp(self):
         for obj, name, value in ((rgbd, "_core", None), (rgbd, "_client", None), (rgbd, "_start_error", None),
                                  (rgb, "stop_helper", lambda: False), (rgb, "start_helper", lambda: None),
+                                 (rgb, "start_pawnio", lambda: False),
                                  (rgbd, "_log_diagnosis", lambda: None), (rgbd, "time", mock.Mock())):
             p = mock.patch.object(obj, name, value)
             p.start()
@@ -78,6 +79,17 @@ class DaemonLogicTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 rgbd._rescan()
         self.assertEqual(started, [1])
+
+    def test_pawnio_is_started_before_openrgb_and_before_a_rescan(self):
+        order = []
+        core = mock.Mock()
+        core.devices.return_value = []
+        core.rescan.side_effect = lambda: order.append("rescan")
+        with mock.patch.object(rgb, "start_pawnio", lambda: order.append("pawnio")), \
+                mock.patch.object(rc, "SdkBackend", side_effect=lambda **kw: order.append("openrgb") or core):
+            rgbd._start_core()
+            rgbd._rescan()
+        self.assertEqual(order, ["pawnio", "openrgb", "pawnio", "rescan"])
 
     def test_after_restart_reapplies_in_a_thread(self):
         threads = []

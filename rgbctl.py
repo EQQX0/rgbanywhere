@@ -28,6 +28,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 47824
+TIMEOUT = 20  # seconds to wait for the app
 GROUPS = ("all", "ram", "fans", "keyboard", "mouse")
 NAMES = {"red": "FF0000", "green": "00FF00", "blue": "0000FF", "white": "FFFFFF", "yellow": "FFFF00", "cyan": "00FFFF",
          "magenta": "FF00FF", "purple": "8000FF", "orange": "FF6000", "pink": "FF3090", "warm": "FFB070", "teal": "00C0A0"}
@@ -79,7 +80,7 @@ def request(method, path, body=None):
                                  data=None if body is None else json.dumps(body).encode(),
                                  headers={"Authorization": "Bearer " + token(), "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=20) as r:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         try:
@@ -87,7 +88,9 @@ def request(method, path, body=None):
         except ValueError:
             msg = ""
         fail("the app answered %s %s" % (e.code, msg))
-    except (urllib.error.URLError, ConnectionError, TimeoutError):
+    except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
+        if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):  # up, but stuck
+            fail("RGB Anywhere did not answer within %d seconds. It may be busy or hung." % TIMEOUT)
         fail("RGB Anywhere is not running (nothing listening on 127.0.0.1:%d). Start it and retry." % port, 2)
 
 
@@ -135,6 +138,8 @@ def main(argv=None):
     elif a.cmd == "off":
         call("set_mode", "off")
     elif a.cmd == "preset":
+        if a.number < 0:
+            fail("preset numbers start at 0 (see: rgbctl presets)")
         call("apply_preset", a.number)
     elif a.cmd == "profile":
         call("apply_profile", a.id)

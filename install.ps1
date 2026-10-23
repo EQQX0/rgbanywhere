@@ -49,18 +49,34 @@ if (-not (Test-Path (Join-Path $here 'openrgb\OpenRGB.exe'))) {
     if ($LASTEXITCODE) { throw "fetch-openrgb.ps1 failed. Check your internet connection and run this again." }
 }
 # RAM and some boards are reached through the PawnIO driver (a separate, signed driver from https://pawnio.eu).
-if (-not (Get-Service PawnIO -ErrorAction SilentlyContinue) -and -not (Test-Path "$env:ProgramFiles\PawnIO")) {
-    $ok = $false
-    if (Get-Command winget -ErrorAction SilentlyContinue) {
-        Write-Host "PawnIO driver not found; installing it with winget (namazso.PawnIO)..."
-        try {
-            winget install --id namazso.PawnIO -e --silent --accept-package-agreements --accept-source-agreements
-            $ok = ($LASTEXITCODE -eq 0) -and ((Get-Service PawnIO -ErrorAction SilentlyContinue) -or (Test-Path "$env:ProgramFiles\PawnIO"))
-        } catch { $ok = $false }
-    }
-    if (-not $ok) {
-        Write-Warning "PawnIO driver is not installed. RAM and some motherboard lights need it: install it from https://pawnio.eu (or: winget install namazso.PawnIO). USB devices work without it."
-    }
+# Its own installer is downloaded from the author's release page, never shipped here, and run only if the SHA-256 matches.
+$pawnUrl = 'https://github.com/namazso/PawnIO.Setup/releases/download/2.2.0/PawnIO_setup.exe'
+$pawnSha = '1f519a22e47187f70a1379a48ca604981c4fcf694f4e65b734aaa74a9fba3032'
+function Get-PawnState { $o = (& sc.exe query PawnIO 2>$null) -join ' '; if ($o -match 'STATE\s*:\s*\d+\s+(\w+)') { $Matches[1] } else { 'MISSING' } }
+$pawn = Get-PawnState
+if ($pawn -eq 'MISSING') {
+    $setup = Join-Path $env:TEMP 'PawnIO_setup.exe'
+    try {
+        Write-Host "PawnIO driver not found; downloading its installer from github.com/namazso/PawnIO.Setup..."
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $pawnUrl -OutFile $setup -UseBasicParsing
+        $got = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+        if ($got -ne $pawnSha) { throw "the download has SHA-256 $got, not the expected $pawnSha, so it was not run" }
+        Start-Process $setup -ArgumentList '-install', '-silent' -Wait
+    } catch {
+        Write-Warning "PawnIO could not be installed ($_). RAM and some motherboard lights need it: install it from https://pawnio.eu. USB devices work without it."
+    } finally { Remove-Item $setup -Force -ErrorAction SilentlyContinue }
+    $pawn = Get-PawnState
+}
+if ($pawn -ne 'MISSING' -and $pawn -ne 'RUNNING') {
+    & sc.exe start PawnIO | Out-Null
+    Start-Sleep -Seconds 1
+    $pawn = Get-PawnState
+}
+switch ($pawn) {
+    'RUNNING' { Write-Host "PawnIO driver is running." }
+    'MISSING' { Write-Warning "The PawnIO driver is not installed, so RAM and some motherboard lights stay off. USB devices work." }
+    default   { Write-Warning "The PawnIO driver is installed but is $pawn. Restart the PC, then press Rescan. If it still does not start, Windows may be blocking it: turn off Memory integrity (Windows Security > Device security > Core isolation), restart, and press Rescan. USB devices work meanwhile." }
 }
 # 3. Default config.json (only if absent): generic settings, no vendor workarounds
 $cfg = Join-Path $here 'config.json'

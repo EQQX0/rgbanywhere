@@ -477,7 +477,7 @@ static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l)
         g_chkDesktop = make(L"BUTTON", L"Add a shortcut to the desktop", BS_AUTOCHECKBOX | WS_TABSTOP, 28, 150, 424, 24, ID_CHK_DESKTOP, g_font);
         g_chkStartup = make(L"BUTTON", L"Start RGB Anywhere when Windows starts", BS_AUTOCHECKBOX | WS_TABSTOP, 28, 176, 424, 24, ID_CHK_STARTUP, g_font);
         g_chkLaunch = make(L"BUTTON", L"Open RGB Anywhere when setup finishes", BS_AUTOCHECKBOX | WS_TABSTOP, 28, 202, 424, 24, ID_CHK_LAUNCH, g_font);
-        g_note = make(L"STATIC", L"Windows will ask for permission once. Setup needs it to add the lighting service and the PawnIO driver (for RAM lights). About 250 MB of disk space.", SS_LEFT, 28, 234, 424, 38, 0, g_font);
+        g_note = make(L"STATIC", L"Windows will ask for permission once. Setup needs it to add the lighting service and the PawnIO driver (for RAM lights, downloaded from its author). About 250 MB of disk space.", SS_LEFT, 28, 234, 424, 38, 0, g_font);
         for (HWND c : {g_chkDesktop, g_chkStartup, g_chkLaunch}) SendMessageW(c, BM_SETCHECK, BST_CHECKED, 0);
 
         g_status = make(L"STATIC", L"", SS_LEFT, 28, 112, 424, 20, 0, g_font);

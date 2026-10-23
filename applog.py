@@ -61,6 +61,10 @@ class _Redact(logging.Filter):
             red = redact(msg)
             if red != msg:
                 record.msg, record.args = red, ()
+            if record.exc_info and not record.exc_text:  # an exception's text can carry a URL or token too
+                record.exc_text = logging.Formatter().formatException(record.exc_info)
+            if record.exc_text:
+                record.exc_text = redact(record.exc_text)
         except Exception:
             pass
         return True

@@ -80,6 +80,7 @@ class RgbctlTest(unittest.TestCase):
     def test_bad_input_never_reaches_the_app(self):
         self.assertEqual(self.run_ctl("color", "notacolor")[0], 1)
         self.assertEqual(self.run_ctl("brightness", "3")[0], 1)
+        self.assertEqual(self.run_ctl("preset", "-1")[0], 1)  # would pick the last preset if it got through
         self.assertEqual(FakeApp.calls, [])
 
     def test_refusal_from_the_app(self):
@@ -109,6 +110,15 @@ class RgbctlTest(unittest.TestCase):
             code, res = self.run_ctl("status")
         self.assertEqual(code, 2)
         self.assertIn("not running", res["error"])
+
+    def test_app_that_does_not_answer_is_not_called_not_running(self):
+        with socket.socket() as s:  # accepts the connection (the backlog) and never replies
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            with mock.patch.dict(os.environ, {"RGBCTL_PORT": str(s.getsockname()[1])}), mock.patch.object(rgbctl, "TIMEOUT", 0.3):
+                code, res = self.run_ctl("status")
+        self.assertEqual(code, 1)
+        self.assertIn("did not answer", res["error"])
 
     def test_missing_token_file(self):
         os.remove(self.token)
