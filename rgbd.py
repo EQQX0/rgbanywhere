@@ -74,8 +74,8 @@ def _start_core():
 
 
 def _after_restart():
-    """OpenRGB exited and SdkBackend started it again: it has forgotten the colours (and prepare() checks the zone sizes), so apply them again
-    (in a thread: the request that noticed still holds the backend's lock)."""
+    """OpenRGB exited and SdkBackend started it again: it has forgotten the colours, so apply them again, with
+    prepare() checking the zone sizes (in a thread: the request that noticed still holds the backend's lock)."""
     applog.event("core_restart", ok=True, restarts=_core.debug()["restarts"] if _core else None)
 
     def go():
