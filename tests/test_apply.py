@@ -253,6 +253,39 @@ SERVICE_NAME: PawnIO
         self.assertIsNone(rgb.parse_service_state(""))
 
 
+class StartPawnioTest(unittest.TestCase):
+    def run_start(self, states, rc=0):
+        """start_pawnio() with sc replaced: service_state() answers from states (the last one repeats); returns
+        (result, the sc commands it ran)."""
+        states, ran = list(states), []
+
+        def state(name):
+            return states.pop(0) if len(states) > 1 else states[0]
+
+        with mock.patch.object(rgb, "service_state", state), mock.patch.object(rgb.time, "sleep", lambda s: None), \
+                mock.patch.object(rgb, "_quiet", lambda *cmd: ran.append(cmd) or mock.Mock(returncode=rc, stdout="", stderr="")), \
+                mock.patch.object(rgb, "_log") as log:
+            return rgb.start_pawnio(wait=0.05), ran, log
+
+    def test_stopped_service_is_started(self):
+        ok, ran, log = self.run_start(["STOPPED", "START_PENDING", "RUNNING"])
+        self.assertTrue(ok)
+        self.assertEqual(ran, [("sc", "start", "PawnIO")])
+        self.assertIn("PawnIO was stopped", log.info.call_args.args[0])
+
+    def test_running_or_missing_service_is_left_alone(self):
+        for state in ("RUNNING", None):
+            ok, ran, _ = self.run_start([state])
+            self.assertFalse(ok)
+            self.assertEqual(ran, [])
+
+    def test_failed_start_is_reported_not_raised(self):
+        ok, ran, log = self.run_start(["STOPPED"], rc=5)
+        self.assertFalse(ok)
+        self.assertEqual(len(ran), 1)
+        log.warning.assert_called_once()
+
+
 class RulesTest(unittest.TestCase):
     def dev(self, *names):
         return rc.Device(None, {"index": 0, "name": "D", "type": 0, "led_count": 1, "modes": list(names), "zones": []})

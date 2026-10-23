@@ -230,10 +230,15 @@ def hints(d):
     if svc is None:
         out.append("The PawnIO driver is not installed, so RAM lights cannot be reached. Install it with "
                    "'winget install namazso.PawnIO' (or run Setup again), restart the PC, then press Rescan.")
-    elif svc == "STOPPED" and d["pawnio"].get("exit_code") == 31 and d["pawnio"].get("memory_integrity"):
-        out.append("The PawnIO driver is installed but Windows could not load it (exit code 31), and Memory integrity is on, "
-                   "which blocks drivers like it. Turn it off: Windows Security > Device security > Core isolation > Memory "
-                   "integrity, restart the PC, then press Rescan. USB devices work meanwhile.")
+    elif svc == "STOPPED" and d["pawnio"].get("exit_code") == 31:
+        # Not Memory integrity by default: PawnIO 2.2.0 loads with it on. It is a demand-start service that nothing starts
+        # after a restart, and the lighting daemon starts it with the next Rescan.
+        out.append("The PawnIO driver service is STOPPED (last exit code 31). It does not start by itself after a restart; "
+                   "RGB Anywhere starts it when it launches OpenRGB, so press Rescan first. If it stays stopped, run "
+                   "'sc start PawnIO' as admin and read the error it gives.%s" % (
+                       " Memory integrity is on and can block some drivers, but only turn it off (Windows Security > Device "
+                       "security > Core isolation) if that error says the driver was blocked."
+                       if d["pawnio"].get("memory_integrity") else ""))
     elif svc == "STOPPED" and d["pawnio"].get("exit_code") == 1072:
         out.append("The PawnIO driver service is marked for deletion (exit code 1072), left over from an earlier install or "
                    "removal. Restart the PC so Windows finishes removing it, run Setup again, then press Rescan.")

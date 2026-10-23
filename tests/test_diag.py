@@ -154,23 +154,25 @@ class LocalTest(Base):
             d = diag.collect_local("ConnectionError: refused")
         return d, " ".join(d["hints"])
 
-    def test_pawnio_blocked_by_memory_integrity(self):
+    def test_pawnio_stopped_with_exit_code_31_says_rescan_first(self):
         d, hints = self.stopped_pawnio(31, True)
-        self.assertIn("Memory integrity is on", hints)
-        self.assertIn("Windows Security > Device security > Core isolation", hints)
-        self.assertNotIn("Restart the PC, or run 'sc start PawnIO'", hints)
+        self.assertIn("(last exit code 31)", hints)
+        self.assertIn("press Rescan first", hints)
+        self.assertIn("run 'sc start PawnIO' as admin and read the error", hints)
+        self.assertIn("only turn it off", hints)  # Memory integrity is named, but not as the likely cause
+        self.assertNotIn("Turn it off:", hints)
         self.assertIn("PawnIO exit code: 31; Memory integrity: on", diag.text(d))
 
-    def test_pawnio_exit_code_31_without_memory_integrity_keeps_the_generic_hint(self):
+    def test_pawnio_exit_code_31_without_memory_integrity_does_not_mention_it(self):
         for hvci in (False, None):
             _, hints = self.stopped_pawnio(31, hvci)
-            self.assertIn("PawnIO driver service is STOPPED", hints)
-            self.assertNotIn("Memory integrity is on", hints)
+            self.assertIn("press Rescan first", hints)
+            self.assertNotIn("Memory integrity", hints)
 
     def test_pawnio_marked_for_deletion(self):
         _, hints = self.stopped_pawnio(1072, True)
         self.assertIn("marked for deletion (exit code 1072)", hints)
-        self.assertNotIn("Memory integrity is on", hints)
+        self.assertNotIn("Memory integrity", hints)
 
     def test_service_exit_code_is_read_by_shape_not_label(self):
         sc = ("SERVICE_NAME: PawnIO \n        TYPE               : 1  KERNEL_DRIVER  \n        STATE              : 1  STOPPED \n"
