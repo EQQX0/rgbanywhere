@@ -679,7 +679,12 @@ class Api:
         return self._app.presets_changed()
 
     def restore_preset(self, i, p):
-        self._app.presets.insert(min(int(i), len(self._app.presets)), p)
+        try:
+            p = rgb.clean_lighting(p)  # it comes back from the page or a phone, so check it like a new color
+        except (ValueError, TypeError) as e:
+            log.warning("not restoring preset %r: %s", p, e)
+            return self._app.presets
+        self._app.presets.insert(max(0, min(int(i), len(self._app.presets))), p)
         return self._app.presets_changed()
 
     # Profiles: the lighting and the cooler picture together. Each call returns the new list (or {"error": ...}).
@@ -872,6 +877,11 @@ class App:
         if self.state.get("mode") == "off":  # also reached from the tray menu
             self.js("rgbToast", "Turn the lights on to change colors", "info")
             return {"error": "Turn the lights on to change colors."}
+        try:
+            p = rgb.clean_lighting(p)  # a preset saved by an older version or edited by hand
+        except (ValueError, TypeError) as e:
+            log.warning("preset %r not applied: %s", p.get("name") if isinstance(p, dict) else p, e)
+            return {"error": "This preset has an invalid color: %s" % e}
         self.state["color"] = p["color"]
         self.state["groups"] = dict(p.get("groups", {}))
         self.state["mode"] = "static"
@@ -1247,6 +1257,11 @@ class App:
     def restore_profile(self, i, p):
         if isinstance(p, dict) and re.fullmatch(r"[0-9a-f]{10}", str(p.get("id", ""))) and not self._find_profile(p["id"]):
             keep = {k: p[k] for k in ("id", "name", "color", "groups", "brightness", "cooler_name") if k in p}
+            try:
+                keep = rgb.clean_lighting(keep)
+            except (ValueError, TypeError) as e:
+                log.warning("not restoring profile %r: %s", p.get("name"), e)
+                return self.profiles_public()
             self.profiles.insert(max(0, min(i, len(self.profiles))), keep)
         return self._profiles_changed()
 
@@ -1267,6 +1282,11 @@ class App:
         if self.state.get("mode") == "off":
             self.js("rgbToast", "Turn the lights on to apply a profile", "info")
             return {"error": "Turn the lights on to apply a profile."}
+        try:
+            p = rgb.clean_lighting(p)  # a profile saved by an older version or edited by hand
+        except (ValueError, TypeError) as e:
+            log.warning("profile %r not applied: %s", p.get("name"), e)
+            return {"error": "This profile has an invalid color: %s" % e}
         mp4 = os.path.join(PROFILES, pid + ".mp4")
         s = self.state
         s["color"], s["groups"], s["mode"] = p["color"], dict(p.get("groups", {})), "static"

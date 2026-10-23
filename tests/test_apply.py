@@ -267,6 +267,17 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(rgb.dev_mode_name(self.dev("Rainbow"), "off"), None)
         self.assertEqual(rgb.dev_mode_name(self.dev("Rainbow", "Breathing"), "breathing"), "breathing")
 
+    def test_clean_lighting(self):
+        p = rgb.clean_lighting({"name": "x" * 40, "color": "#ff0000", "groups": {"ram": "blue"}, "brightness": 300,
+                                "id": "abc"})
+        self.assertEqual(p, {"name": "x" * 24, "color": "FF0000", "groups": {"ram": "0000FF"}, "brightness": 100, "id": "abc"})
+        self.assertNotIn("groups", rgb.clean_lighting({"color": "00FF00"}))
+        for bad in (None, [], {"color": "zz"}, {}, {"color": "FF0000", "groups": {"fan": "FF0000"}},
+                    {"color": "FF0000", "groups": ["ram"]}, {"color": "FF0000", "groups": {"ram": 12}},
+                    {"color": "FF0000", "brightness": "lots"}):
+            with self.assertRaises((ValueError, TypeError), msg=repr(bad)):
+                rgb.clean_lighting(bad)
+
     def test_set_group_color(self):
         s = {"color": "0000FF", "groups": {"ram": "FF0000"}, "mode": "off"}
         self.assertEqual(rgb.set_group_color(s, "keyboard", "#00ff00"), "00FF00")

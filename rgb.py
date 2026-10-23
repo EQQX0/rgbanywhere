@@ -358,6 +358,25 @@ def dev_mode_name(dev, mode):
     return next((n for n in order if n in names), None)
 
 
+def clean_lighting(p):
+    """A preset or profile that comes back from outside (Undo on the page or a phone), with its lighting checked:
+    colours valid, groups known, brightness 5-100, name short. Other keys are kept. Raises ValueError."""
+    if not isinstance(p, dict):
+        raise ValueError("not a preset or profile: %r" % (p,))
+    out = dict(p)
+    out["color"] = to_hex(str(p.get("color", "")))
+    if "groups" in p:
+        groups = p["groups"] or {}
+        if not isinstance(groups, dict) or any(g not in GROUPS for g in groups):
+            raise ValueError("bad groups: %r" % (groups,))
+        out["groups"] = {g: to_hex(str(c)) for g, c in groups.items()}
+    if "brightness" in p:
+        out["brightness"] = max(5, min(100, int(p["brightness"])))
+    if "name" in p:
+        out["name"] = str(p["name"])[:24]
+    return out
+
+
 def set_group_color(state, target, color):
     """Set `target` ("all" or one of GROUPS) to `color` (a name or hex) in state. Raises ValueError for anything else,
     so a bad request from the phone or rgbctl never reaches state.json or the devices."""
