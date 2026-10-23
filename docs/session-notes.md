@@ -22,6 +22,7 @@ Tests: 106 (1 skipped here: no PowerShell on PATH), all passing on Linux (Python
 
 Unverified on hardware: everything touching OpenRGB.exe, PawnIO, RAM, ARGB sizing, colours, monitors-off, the job object, leftover-process cleanup, Setup's update path, package.ps1 output.
 
+When something fails on the PC, `docs/lighting-path.md` says which log line each step leaves.
 Commands for the Windows PC, read-only first (in the checkout, branch openrgb-bundle):
 1. `python -m pip install openrgb-python==0.3.8` then `python -m unittest discover -s tests -v`
 2. `powershell -ExecutionPolicy Bypass -File fetch-openrgb.ps1` then `type openrgb\fetched-from.txt` and `dir openrgb\PawnIOLib.dll openrgb\*.bin`
@@ -74,6 +75,7 @@ These change lights or processes:
 26. d63fd17 install.ps1 checks for Python 3.10+ (Store alias).
 27. b4ff8fd PowerShell parse test.
 28. 9995c03 MinGW build of the Setup exe in CI.
+29. 961c095 docs/lighting-path.md: colour and monitors-off traced step by step with log lines.
 
 ## Next
 
