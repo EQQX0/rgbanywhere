@@ -362,34 +362,103 @@ def readable(saved):
 
 
 def restorable():
-    """The saved devices worth restoring, and the names of those whose original lighting could not be read."""
+    """The saved devices worth restoring, and those whose original lighting could not be read (both as saved)."""
     saved = load_originals()
-    return [s for s in saved if readable(s)], [s.get("name", "?") for s in saved if not readable(s)]
+    return [s for s in saved if readable(s)], [s for s in saved if not readable(s)]
 
 
-def restore(client, log=print):
+# The vendor app that keeps a profile for a device, by vendor or name. Opening it puts that profile back.
+VENDOR_APPS = [(re.compile(p, re.I), app) for p, app in (
+    (r"\brazer\b", "Razer Synapse"), (r"\bcorsair\b", "Corsair iCUE"), (r"\basus\b|\baura\b|\brog\b", "ASUS Armoury Crate"),
+    (r"\blogitech\b", "Logitech G HUB"), (r"\bmsi\b|\bmystic light\b", "MSI Center"),
+    (r"\bgigabyte\b|\baorus\b", "Gigabyte Control Center"), (r"\bsteelseries\b", "SteelSeries GG"), (r"\bnzxt\b", "NZXT CAM"),
+    (r"\blian li\b", "Lian Li L-Connect"), (r"\bcooler master\b", "Cooler Master MasterPlus"), (r"\bhyperx\b", "HyperX NGENUITY"),
+    (r"\bthermaltake\b", "Thermaltake TT RGB Plus"), (r"\basrock\b", "ASRock Polychrome RGB"))]
+# Built-in effects most devices have; the first one a device has is its "effect" on exit.
+EFFECT_MODES = ("spectrum cycle", "rainbow wave", "rainbow", "color cycle", "colour cycle", "spectrum", "color wave", "wave")
+LAST_RESTORE = {}  # what the latest restore did, for the app to tell the user
+
+
+def vendor_app(dev):
+    """The vendor app that keeps this device's lighting, or None."""
+    text = "%s %s" % (getattr(dev, "vendor", "") or "", dev.name)
+    return next((app for pattern, app in VENDOR_APPS if pattern.search(text)), None)
+
+
+def exit_choice(state, group):
+    """What a device of `group` shows when its original lighting can't be read: "leave" (hand it back: it keeps its
+    colour until its vendor app sets it again), "effect" (its built-in rainbow-like effect) or a hex colour. Set per
+    group in state["exit"], or for every group under "all"."""
+    ex = state.get("exit") or {}
+    choice = ex.get(group, ex.get("all", "leave"))
+    return choice if choice in ("leave", "effect") or valid_hex(choice) else "leave"
+
+
+def restore(client, log=print, state=None):
     """Put every saved device back the way it was before RGB Anywhere (state mode "original"), where OpenRGB could read
-    it; the others are left as they are. Returns failures."""
+    it. A device it could not read gets its group's exit choice (see exit_choice); left as it is, its vendor app is
+    named so the user can open it. Returns failures; LAST_RESTORE says what happened."""
+    state = state or {}
     ok, unknown = restorable()
     res = client.restore(ok)
-    _log.info("restore: %d restored, missing %s, failed %s, not readable (left as they are) %s", len(res["restored"]),
-              res["missing"] or "none", res["failed"] or "none", unknown or "none")
-    for name in unknown:
-        log("keep %s (its original lighting could not be read)" % name)
-    for name in res["restored"]:
+    done = {"restored": res["restored"], "missing": res["missing"], "failed": list(res["failed"]), "colored": [],
+            "effect": [], "handed_back": []}
+    by_key = {tuple(d.key): d for d in client.devices}
+    for s in unknown:
+        dev = by_key.get(tuple(s.get("key") or ()))
+        if dev is None:
+            done["missing"].append(s.get("name", "?"))
+            continue
+        choice = exit_choice(state, group_of(dev))
+        try:
+            effect = next((m.name for m in dev.modes if m.name.lower() in EFFECT_MODES), None) if choice == "effect" else None
+            if valid_hex(choice) and dev_mode_name(dev, "static"):
+                dev.set_mode(dev_mode_name(dev, "static"))
+                dev.set_color(to_color(choice.upper()))
+                done["colored"].append(dev.name)
+            elif effect:
+                dev.set_mode(effect)
+                done["effect"].append(dev.name)
+            else:  # "leave", or a device with no static mode or no built-in effect
+                done["handed_back"].append({"name": dev.name, "app": vendor_app(dev)})
+        except Exception as e:
+            done["failed"].append(dev.name)
+            _log.warning("restore: %s exit choice %r failed: %s: %s", dev.name, choice, type(e).__name__, e)
+    _log.info("restore: %d restored, %d set to their exit colour, %d to their effect, handed back %s, missing %s, "
+              "failed %s", len(done["restored"]), len(done["colored"]), len(done["effect"]),
+              ["%s (%s)" % (h["name"], h["app"] or "no vendor app known") for h in done["handed_back"]] or "none",
+              done["missing"] or "none", done["failed"] or "none")
+    for name in done["restored"]:
         log("ok   " + name)
-    for name in res["failed"]:
+    for h in done["handed_back"]:
+        log("keep %s (its original lighting could not be read%s)" % (h["name"], "; open %s" % h["app"] if h["app"] else ""))
+    for name in done["failed"]:
         log("fail %s (could not restore)" % name)
-    applog.event("lights_restore", ok=not res["failed"], restored=len(res["restored"]), missing=res["missing"],
-                 failed=res["failed"], unreadable=unknown)
-    return len(res["failed"])
+    LAST_RESTORE.clear()
+    LAST_RESTORE.update(done)
+    applog.event("lights_restore", ok=not done["failed"], restored=len(done["restored"]), colored=done["colored"],
+                 effect=done["effect"], handed_back=[h["name"] for h in done["handed_back"]], missing=done["missing"],
+                 failed=done["failed"])
+    return len(done["failed"])
+
+
+def handback_message(done=None):
+    """One line for the user about devices left as they are, naming the apps that can put their lighting back."""
+    done = LAST_RESTORE if done is None else done
+    left = done.get("handed_back") or []
+    if not left:
+        return ""
+    apps = sorted({h["app"] for h in left if h["app"]})
+    return "%d device(s) couldn't be read and keep their current colours.%s" % (
+        len(left), " Open %s to put their own lighting back, or pick an exit colour." % ", ".join(apps) if apps else
+        " Pick an exit colour for them.")
 
 
 def apply(client, state, log=print):
     """Send the state to every device. Returns how many devices failed (a stale connection fails them all)."""
     mode = state["mode"]
     if mode == "original":
-        return restore(client, log)
+        return restore(client, log, state)
     failed = 0
     _log.info("apply: mode=%s color=%s groups=%s brightness=%s calibration=%s%s", mode, state.get("color"),
               state.get("groups"), state.get("brightness"), state.get("calibration"),
@@ -590,7 +659,7 @@ def _main():
     if "--diagnose" in args:
         sys.exit(diagnose())
     if "--restore" in args:  # Uninstall.exe, before it removes the daemon: hand the devices back, change nothing else
-        sys.exit(1 if restore(connect(wait=20)) else 0)
+        sys.exit(1 if restore(connect(wait=20), state=state) else 0)
     unknown = [a for a in args if a.startswith("--") and a != "--restart"]
     if unknown:
         sys.exit("unknown option %s. See the usage at the top of rgb.py." % " ".join(unknown))

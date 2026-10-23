@@ -69,10 +69,10 @@ PHONE_PORT = 47822
 CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 127.0.0.1 only, bearer token from control.token
 CONTROL_TOKEN = os.path.join(HERE, "control.token")
 CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
-                   "rescan", "set_sync_accent"}
+                   "rescan", "set_sync_accent", "set_exit"}
 FW_RULE = "RGB Anywhere Phone"
 # What a phone may call. Deliberately excludes desktop-only things (file dialog, calibration test mode).
-PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "save_preset",
+PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "set_exit", "apply_preset", "save_preset",
                  "update_preset", "delete_preset", "restore_preset", "restore_screen", "rescan", "set_sync_accent",
                  "monitors_off", "save_profile", "update_profile", "delete_profile", "restore_profile",
                  "apply_profile", "calibrate", "set_calibration", "reset_calibration", "apply_screen", "discard_staged", "log_client"}
@@ -527,6 +527,24 @@ class Api:
         if mode == "off" and not was_off:  # lights off takes the monitors with it
             self._app.monitors_off(wake_lights=True)
 
+    def set_exit(self, group, choice):
+        """What devices of `group` ("all" or one of rgb.GROUPS) show on Original or uninstall when their original
+        lighting can't be read: "leave", "effect" or a colour."""
+        if group != "all" and group not in rgb.GROUPS:
+            return {"error": "unknown group %r" % (group,)}
+        choice = str(choice)
+        if choice not in ("leave", "effect"):
+            try:
+                choice = rgb.to_hex(choice)
+            except ValueError as e:
+                return {"error": str(e)}
+        ex = self._app.state.setdefault("exit", {})
+        if group == "all":
+            ex.clear()
+        ex[group] = choice
+        self._app.commit()
+        return ex
+
     def apply_preset(self, i):
         presets = self._app.presets
         if not 0 <= int(i) < len(presets):  # a negative number would otherwise pick from the end
@@ -763,6 +781,7 @@ class App:
         self.profiles = self.state.setdefault("profiles", [])
         self._drop_orphan_profile_files()
         self.status = ["Connecting…", "warn"]
+        self.handback_told = ""  # the last "couldn't be read, open <app>" message shown
         self.wake_armed_at = 0  # time lights+monitors went off together; 0 = not waiting for input (see wake_watch)
         self.monitors_error = None  # outcome of the last monitors_off()
         self.test_color = None
@@ -1001,7 +1020,12 @@ class App:
                 st = dict(self.state)
                 if self.test_color:
                     st.update(test=self.test_color, mode="static")
-                if rgb.apply(client, st, log=self._rgb_log):
+                failed = rgb.apply(client, st, log=self._rgb_log)
+                told = rgb.handback_message() if st.get("mode") == "original" else ""
+                if told and told != self.handback_told:  # once per visit to Original, not on every rescan
+                    self.js("rgbToast", told, "info")
+                self.handback_told = told
+                if failed:
                     # some/all devices failed: OpenRGB probably restarted (Rescan, sleep). Reconnect once and retry.
                     log.warning("some devices failed to take the colors; reconnecting to the lighting daemon and retrying once")
                     self.set_status("Reconnecting…", "warn")

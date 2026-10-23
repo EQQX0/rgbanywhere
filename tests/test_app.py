@@ -74,6 +74,24 @@ class ApiTest(unittest.TestCase):
         a.apply_preset.assert_called_once_with(a.presets[1])
 
 
+    def test_exit_choices_are_checked_and_saved(self):
+        a = bare_app()
+        a.commit = mock.Mock()
+        api = m.Api(a, source="cli")
+        self.assertEqual(api.set_exit("ram", "effect"), {"ram": "effect"})
+        self.assertEqual(api.set_exit("fans", "#ff6000"), {"ram": "effect", "fans": "FF6000"})
+        self.assertIn("error", api.set_exit("toaster", "leave"))
+        self.assertIn("error", api.set_exit("mouse", "sparkly"))
+        self.assertEqual(api.set_exit("all", "leave"), {"all": "leave"})  # one choice for everything replaces the rest
+        self.assertEqual(a.state["exit"], {"all": "leave"})
+
+    def test_original_mode_is_accepted(self):
+        a = bare_app()
+        a.commit = mock.Mock()
+        m.Api(a, source="cli").set_mode("original")
+        self.assertEqual(a.state["mode"], "original")
+
+
 class ScreenTest(unittest.TestCase):
     def test_two_callers_cannot_both_start_a_screen_job(self):
         class Slow(m.App):

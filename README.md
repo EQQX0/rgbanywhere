@@ -77,9 +77,17 @@ OpenRGB files some fan hubs, docks and mats as "accessory", "light" or "unknown"
 
 The first time RGB Anywhere finds a device, before it changes anything, it saves that device's mode, colors, brightness and speed to `original.json` in the install folder. A device you plug in later is saved the first time it is found. A device saved once is never saved again, so the file keeps what you had before RGB Anywhere.
 
-To go back, press **Original** in the app, or run `rgbctl original` (or `python rgb.py original`). Pick any color to take over again. Uninstalling restores it too, before the app is removed.
+To go back, press **Original** in the app and then **Restore now**, or run `rgbctl original` (or `python rgb.py original`). Pick any color to take over again. Uninstalling restores it too, before the app is removed.
 
-Limits: most devices can't report the colors they show. OpenRGB then reads back Direct, Static or Off with every color black, and RGB Anywhere marks that device as unreadable and leaves it as it is instead of switching it off. On the PC this was tested on (Corsair DDR5, ASUS Aura board, Logitech keyboard and mouse) no device could be read. Lighting stored in Razer Synapse, iCUE, Armoury Crate or another vendor app lives in that app, so for those devices open the vendor app after uninstalling and it applies its own profile again. Devices you used with RGB Anywhere before this feature existed were saved with RGB Anywhere's colors, because those were already on them.
+Most devices can't report the colors they show. OpenRGB then reads back Direct, Static or Off with every color black, and restoring that would switch the lights off, so RGB Anywhere treats such a device as unreadable. On the PC this was tested on (Corsair DDR5, ASUS Aura board, Logitech keyboard and mouse) no device could be read. For unreadable devices, the Original window lets you choose per group what they show on Original and on uninstall:
+
+| Choice | What happens |
+|--------|--------------|
+| Leave as is (default) | RGB Anywhere hands the device back and stops changing it. It keeps its current color until its own app sets it again; the app names that app (Razer Synapse, iCUE, Armoury Crate, G HUB, ...). Open it and it puts its profile back. |
+| Built-in effect | The device's own rainbow-like effect (Spectrum Cycle, Rainbow Wave, ...), close to how most devices look out of the box. |
+| Color | A static color you pick. |
+
+From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit fans FF6000`. Devices you used with RGB Anywhere before this feature existed were saved with RGB Anywhere's colors, because those were already on them.
 
 ## config.json
 
@@ -121,6 +129,7 @@ rgbctl brightness 60
 rgbctl off                         # lights off, monitors off
 rgbctl on
 rgbctl original                    # back to the lighting from before RGB Anywhere
+rgbctl exit fans effect            # what unreadable devices show on original/uninstall: leave, effect or a color
 rgbctl presets / rgbctl preset 2
 rgbctl profiles / rgbctl profile <id>
 rgbctl monitors-off

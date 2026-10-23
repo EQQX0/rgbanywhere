@@ -53,6 +53,21 @@ class GroupTest(unittest.TestCase):
             self.assertEqual(rgb.group_of(dev("Razer Chroma Addressable RGB Controller", "UNKNOWN")), "fans")
             self.assertEqual(rgb.group_of(dev("Razer Mouse Dock", "ACCESSORY")), "mouse")
 
+    def test_vendor_apps(self):
+        def d(name, vendor=""):
+            return SimpleNamespace(name=name, vendor=vendor)
+        self.assertEqual(rgb.vendor_app(d("Razer BlackWidow V4")), "Razer Synapse")
+        self.assertEqual(rgb.vendor_app(d("Vengeance RGB DDR5", "Corsair")), "Corsair iCUE")
+        self.assertEqual(rgb.vendor_app(d("ASUS B650E MAX GAMING WIFI")), "ASUS Armoury Crate")
+        self.assertEqual(rgb.vendor_app(d("G502 HERO", "Logitech")), "Logitech G HUB")
+        self.assertIsNone(rgb.vendor_app(d("Generic ARGB Strip")))
+
+    def test_exit_choice(self):
+        self.assertEqual(rgb.exit_choice({}, "ram"), "leave")
+        self.assertEqual(rgb.exit_choice({"exit": {"all": "effect"}}, "ram"), "effect")
+        self.assertEqual(rgb.exit_choice({"exit": {"all": "effect", "ram": "FF0000"}}, "ram"), "FF0000")
+        self.assertEqual(rgb.exit_choice({"exit": {"ram": "nonsense"}}, "ram"), "leave")
+
     def test_rgbctl_offers_the_same_groups(self):
         import rgbctl
         self.assertEqual(rgbctl.GROUPS, ("all",) + rgb.GROUPS)

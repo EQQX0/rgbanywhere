@@ -83,6 +83,17 @@ class RgbctlTest(unittest.TestCase):
         self.assertEqual(self.run_ctl("preset", "-1")[0], 1)  # would pick the last preset if it got through
         self.assertEqual(FakeApp.calls, [])
 
+    def test_original_and_exit_choices(self):
+        self.assertEqual(self.run_ctl("original")[0], 0)
+        self.assertEqual(FakeApp.calls[-1], ("/call/set_mode", ["original"]))
+        self.run_ctl("exit", "fans", "orange")
+        self.assertEqual(FakeApp.calls[-1], ("/call/set_exit", ["fans", "FF6000"]))
+        self.run_ctl("exit", "all", "effect")
+        self.assertEqual(FakeApp.calls[-1], ("/call/set_exit", ["all", "effect"]))
+        n = len(FakeApp.calls)
+        self.assertEqual(self.run_ctl("exit", "mouse", "sparkly")[0], 1)  # not a colour: refused before the app
+        self.assertEqual(len(FakeApp.calls), n)
+
     def test_refusal_from_the_app(self):
         FakeApp.answer = {"error": "Couldn't turn the monitors off: SendNotifyMessage failed (error 5)"}
         code, res = self.run_ctl("monitors-off")
