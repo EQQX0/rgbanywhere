@@ -511,7 +511,15 @@ class Api:
         subprocess.Popen(["explorer", applog.LOG_DIR])
 
     def save_report(self):
-        path = applog.build_report()
+        diagnosis = None
+        try:
+            import diag
+            client = self._app.client if self._app.client is not None else rgb.connect(wait=10)
+            diagnosis = diag.text(client._b.debug())
+        except Exception as e:
+            log.warning("debug report without a diagnosis: %s: %s", type(e).__name__, e)
+            diagnosis = "Could not ask the lighting daemon: %s: %s" % (type(e).__name__, e)
+        path = applog.build_report(diagnosis)
         subprocess.Popen(["explorer", "/select,", path])
         applog.event("debug_report", ok=True, path=path)
         return {"path": path}

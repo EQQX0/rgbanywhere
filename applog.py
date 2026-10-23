@@ -241,8 +241,9 @@ def _versions():
     return lines
 
 
-def build_report():
-    """Zip the logs, settings (secrets removed) and system info. Returns the zip path."""
+def build_report(diagnosis=None):
+    """Zip the logs, the device core's own logs, settings (secrets removed), system info and, when given, the
+    lighting daemon's diagnosis text (diag.text). Returns the zip path."""
     os.makedirs(LOG_DIR, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = os.path.join(LOG_DIR, "debug-report-%s.zip" % stamp)
@@ -255,6 +256,15 @@ def build_report():
         if os.path.isdir(FAILED_DIR):
             for name in os.listdir(FAILED_DIR):
                 z.write(os.path.join(FAILED_DIR, name), "logs/failed/" + name)
+        core_logs = os.path.join(HERE, "cache", "core", "logs")  # OpenRGB's detection log, written by the daemon
+        if os.path.isdir(core_logs):
+            for name in sorted(n for n in os.listdir(core_logs) if n.startswith("OpenRGB_"))[-3:]:
+                try:
+                    z.write(os.path.join(core_logs, name), "core-logs/" + name)
+                except OSError as e:
+                    z.writestr("core-logs/%s.unreadable.txt" % name, str(e))
+        if diagnosis:
+            z.writestr("diagnosis.txt", redact(diagnosis))
         try:
             with open(state_path, encoding="utf-8") as f:
                 state = json.load(f)

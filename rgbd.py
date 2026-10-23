@@ -21,6 +21,7 @@ import threading
 import time
 
 import applog
+import diag
 import rgb
 import rgbcore_client as rc
 
@@ -37,12 +38,26 @@ def _refresh_and_apply():
     rgb.apply(_client, rgb.load_state())
 
 
+def _log_diagnosis():
+    """Write what was found and why things may be missing to the daemon log, once per detection."""
+    try:
+        d = diag.collect(_core, _client)
+        for line in diag.text(d).splitlines():
+            _log.info("diag: %s", line)
+        applog.event("core_diagnosis", ok=not d["hints"], devices=len(d["devices"]), i2c_buses=len(d["core"].get("i2c_buses", [])),
+                     elevated=d["elevated"], pawnio=d["pawnio"]["service"], hints=d["hints"])
+    except Exception:
+        _log.exception("could not collect the diagnosis")
+
+
 def _rescan():
     with _busy:
         helper = rgb.stop_helper()  # the cooler's sensor service disturbs RAM detection
         try:
             _core.rescan()
             time.sleep(1)
+            _client.update()
+            _log_diagnosis()
             _refresh_and_apply()
         finally:
             if helper:
@@ -63,7 +78,9 @@ class Handler(socketserver.StreamRequestHandler):
             elif cmd == "set_mode":
                 _core.set_mode(req["dev"], req["mode"]); res = None
             elif cmd == "set_colors":
-                _core.set_colors(req["dev"], req["colors"]); res = None
+                res = _core.set_colors(req["dev"], req["colors"])
+            elif cmd == "debug":
+                res = diag.collect(_core, _client)
             elif cmd == "resize_zone":
                 _core.resize_zone(req["dev"], req["zone"], req["leds"]); res = None
             elif cmd == "rescan":
@@ -105,9 +122,10 @@ def serve():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     helper = rgb.stop_helper()
     try:
-        _core = rc.CoreBackend()
+        _core = rc.CoreBackend(log_level=rgb.CFG.get("core_log_level", "info"))
         _client = rc.Client(_core)
         _log.info("core: %s, %d devices", _core.version(), len(_client.devices))
+        _log_diagnosis()
         _refresh_and_apply()
     except Exception:
         _log.exception("could not start the device core")

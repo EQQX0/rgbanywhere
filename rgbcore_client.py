@@ -48,9 +48,18 @@ def _enum(cls, v):
         return cls(0) if cls is ZoneType else DeviceType.UNKNOWN
 
 
+# How a mode takes colours (MODE_COLORS_* in OpenRGB's RGBControllerInterface.h)
+COLOR_KINDS = {0: "none", 1: "per-LED", 2: "mode colour", 3: "random"}
+# What rgb_set_colors did (see core/rgbcore.cpp)
+SET_RESULTS = {0: "per-LED colours", 1: "mode colour", 2: "mode takes no colour"}
+
+
 class Mode:
-    def __init__(self, name):
+    def __init__(self, name, info=None):
         self.name = name
+        info = info or {}
+        self.color_kind = COLOR_KINDS.get(info.get("color_mode"), "?")
+        self.colors = info.get("colors")
 
 
 class Zone:
@@ -84,7 +93,11 @@ class Device:
         self.type = _enum(DeviceType, j["type"])
         self.metadata = Metadata(j.get("location", ""))
         self.led_count = j["led_count"]
-        self.modes = [Mode(m) for m in j["modes"]]
+        info = {m["name"]: m for m in j.get("mode_info", [])}  # absent from a core built before 0.1.5
+        self.modes = [Mode(m, info.get(m)) for m in j["modes"]]
+        self.active_mode = j.get("active_mode", -1)
+        self.vendor = j.get("vendor", "")
+        self.location = j.get("location", "")
         self.zones = [Zone(self, i, z) for i, z in enumerate(j["zones"])]
 
     def set_mode(self, name):
@@ -95,8 +108,9 @@ class Device:
         raise ValueError("Mode %s not found on %s" % (name, self.name))
 
     def set_color(self, color):
+        """Returns what the core did: a key of SET_RESULTS (None from a core that does not report it)."""
         rgb = (color.red << 16) | (color.green << 8) | color.blue
-        self._client._b.set_colors(self._idx, [rgb] * max(self.led_count, 1))
+        return self._client._b.set_colors(self._idx, [rgb] * max(self.led_count, 1))
 
 
 class Client:
@@ -113,9 +127,31 @@ class Client:
         self.update()
 
 
+LOG_LEVELS = {"fatal": 0, "error": 1, "warning": 2, "info": 3, "verbose": 4, "debug": 5, "trace": 6}
+
+
+def set_core_log_level(config_dir, level):
+    """Set the device core's own log level (OpenRGB.json > LogManager > loglevel) before it starts.
+
+    The core writes its log to <config_dir>/logs/OpenRGB_<time>.log. "debug" shows every detector it tries.
+    """
+    n = LOG_LEVELS.get(str(level).lower(), level)
+    if not isinstance(n, int):
+        raise ValueError("unknown log level %r (use one of %s)" % (level, ", ".join(LOG_LEVELS)))
+    path = os.path.join(config_dir, "OpenRGB.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            settings = json.load(f)
+    except (FileNotFoundError, ValueError):
+        settings = {}
+    settings.setdefault("LogManager", {})["loglevel"] = n
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=4)
+
+
 # ---------------------------------------------------------------- in-process backend
 class CoreBackend:
-    def __init__(self, dll=None, config_dir=None):
+    def __init__(self, dll=None, config_dir=None, log_level=None):
         dll = dll or os.path.join(HERE, "rgbcore.dll")
         os.add_dll_directory(os.path.dirname(dll))
         self._dll = ctypes.CDLL(dll)
@@ -124,11 +160,18 @@ class CoreBackend:
         d.rgb_devices_json.restype = ctypes.c_char_p
         d.rgb_set_mode.argtypes = [ctypes.c_int, ctypes.c_char_p]
         d.rgb_set_colors.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_uint), ctypes.c_int]
+        d.rgb_set_colors.restype = ctypes.c_int
+        self._has_debug = hasattr(d, "rgb_debug_json")  # added in 0.1.5
+        if self._has_debug:
+            d.rgb_debug_json.restype = ctypes.c_char_p
         d.rgb_resize_zone.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int]
         d.rgb_core_version.restype = ctypes.c_char_p
         self._lock = threading.Lock()
         cfg = config_dir or os.path.join(HERE, "cache", "core")
         os.makedirs(cfg, exist_ok=True)
+        if log_level is not None:
+            set_core_log_level(cfg, log_level)
+        self.config_dir = cfg
         self._call(d.rgb_init, cfg.encode())
 
     def _call(self, fn, *a):
@@ -148,7 +191,15 @@ class CoreBackend:
 
     def set_colors(self, dev, colors):
         arr = (ctypes.c_uint * len(colors))(*colors)
-        self._call(self._dll.rgb_set_colors, dev, arr, len(colors))
+        r = self._call(self._dll.rgb_set_colors, dev, arr, len(colors))
+        if r < 0:
+            raise ValueError("set_colors failed (%d)" % r)
+        return r
+
+    def debug(self):
+        if not self._has_debug:
+            return {"note": "rgbcore.dll is older than 0.1.5 and reports no debug info"}
+        return json.loads(self._call(self._dll.rgb_debug_json).decode("utf-8"))
 
     def resize_zone(self, dev, zone, n):
         self._call(self._dll.rgb_resize_zone, dev, zone, n)
@@ -191,7 +242,10 @@ class RemoteBackend:
         self.request("set_mode", dev=dev, mode=name)
 
     def set_colors(self, dev, colors):
-        self.request("set_colors", dev=dev, colors=colors)
+        return self.request("set_colors", dev=dev, colors=colors)
+
+    def debug(self):
+        return self.request("debug")
 
     def resize_zone(self, dev, zone, n):
         self.request("resize_zone", dev=dev, zone=zone, leds=n)

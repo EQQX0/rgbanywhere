@@ -9,6 +9,8 @@ Usage:
   python rgb.py red breathing   optional mode (static, breathing, rainbow, spectrum cycle, off, ...)
   python rgb.py ram=B32A00 fans=B32A00   per-device color (ram, fans, keyboard, mouse); keeps the rest
   python rgb.py brightness=60   0-100, scales every color
+  python rgb.py --diagnose      what was found and why devices or colors may be missing (changes nothing);
+                                also saved to logs\\diagnose-<time>.txt
 """
 import json
 import os
@@ -234,29 +236,27 @@ def apply(client, state, log=print):
               state.get("groups"), state.get("brightness"), state.get("calibration"),
               " TEST=%s" % state["test"] if state.get("test") else "")
     for dev in client.devices:
-        names = [m.name.lower() for m in dev.modes]
         try:
-            if mode in names:
-                dev.set_mode(mode)
-            elif mode == "off":
-                dev.set_mode("direct" if "direct" in names else "static")
-            elif "static" in names:
-                dev.set_mode("static")
-            elif "direct" in names or "custom" not in names:
-                dev.set_mode("direct")
-            else:
+            want = dev_mode_name(dev, mode)
+            if want == "custom":
                 # Corsair RAM sometimes comes up without Direct (OpenRGB misreads its protocol version);
                 # Custom is its per-LED static mode and is always there.
                 _log.warning("%s has no Direct mode; using Custom instead", dev.name)
-                dev.set_mode("custom")
+            dev.set_mode(want)
             if mode == "off":
-                dev.set_color(RGBColor(0, 0, 0))
+                color = RGBColor(0, 0, 0)
             else:
                 group = group_of(dev)
                 hexc = state.get("test") or color_for(state, group)  # "test" = calibration preview
                 gains = state.get("calibration", {}).get(group, (100, 100, 100))
-                dev.set_color(to_color(hexc, state.get("brightness", 100), gains))
-            _log.debug("ok   %s", dev.name)
+                color = to_color(hexc, state.get("brightness", 100), gains)
+            how = dev.set_color(color)
+            active = next((m for m in dev.modes if m.name.lower() == want), None)
+            _log.debug("ok   %s: mode %s (%s) <- #%02X%02X%02X as %s", dev.name, active.name if active else "?",
+                       active.color_kind if active else "?", color.red, color.green, color.blue,
+                       rgbcore_client.SET_RESULTS.get(how, "?"))
+            if how == 2 and mode != "off":
+                _log.info("%s: mode %s takes no colour, so the colour was not applied", dev.name, active.name if active else "?")
             log("ok   " + dev.name)
         except Exception as e:
             failed += 1
@@ -266,6 +266,43 @@ def apply(client, state, log=print):
         applog.event("lights_apply", ok=False, error="%d of %d devices failed" % (failed, len(client.devices)),
                      mode=mode, color=state.get("color"))
     return failed
+
+
+def dev_mode_name(dev, mode):
+    """The mode apply() picks for `dev` (same order as in apply)."""
+    names = [m.name.lower() for m in dev.modes]
+    if mode in names:
+        return mode
+    if mode == "off":
+        return "direct" if "direct" in names else "static"
+    if "static" in names:
+        return "static"
+    if "direct" in names or "custom" not in names:
+        return "direct"
+    return "custom"
+
+
+def diagnose():
+    """Ask the daemon what it found, print the report with likely causes, and save it under logs\\. Changes nothing."""
+    import datetime
+    import diag
+    try:
+        client = connect(wait=30)
+    except ConnectionError:
+        print("The lighting daemon is not running and could not be started.\n"
+              "Check that the scheduled task exists:  schtasks /query /tn \"%s\"\n"
+              "and read logs\\rgb.log." % rgbcore_client.TASK_LIGHTING)
+        return 1
+    d = client._b.debug()
+    report = diag.text(d)
+    print(report)
+    os.makedirs(applog.LOG_DIR, exist_ok=True)
+    path = os.path.join(applog.LOG_DIR, "diagnose-%s.txt" % datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(report + "\n\n" + json.dumps(d, indent=2, ensure_ascii=False))
+    print("\nSaved to " + path)
+    applog.event("diagnose", ok=not d["hints"], hints=d["hints"], devices=len(d["devices"]))
+    return 0
 
 
 def _quiet(*cmd):
@@ -328,6 +365,8 @@ def main():
 def _main():
     state = load_state()
     args = sys.argv[1:]
+    if "--diagnose" in args:
+        sys.exit(diagnose())
     try:
         if "--restart" in args:  # re-detect devices (the daemon stops/starts the cooler helper around it)
             args.remove("--restart")

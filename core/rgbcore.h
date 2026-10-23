@@ -10,8 +10,9 @@ RGBCORE_API int         rgb_rescan(void);                         /* re-detect d
 RGBCORE_API void        rgb_shutdown(void);
 RGBCORE_API const char *rgb_devices_json(void);                   /* device list as JSON (valid until next call) */
 RGBCORE_API int         rgb_set_mode(int dev, const char *mode);  /* by mode name; 0 = ok */
-RGBCORE_API int         rgb_set_colors(int dev, const unsigned int *rgb, int n); /* 0xRRGGBB per LED; applies */
+RGBCORE_API int         rgb_set_colors(int dev, const unsigned int *rgb, int n); /* 0xRRGGBB per LED; applies. 0 per-LED, 1 as mode colour, 2 mode takes no colour */
 RGBCORE_API int         rgb_resize_zone(int dev, int zone, int leds);
+RGBCORE_API const char *rgb_debug_json(void);                     /* SMBus buses, log level, detection state as JSON */
 RGBCORE_API const char *rgb_core_version(void);
 #ifdef __cplusplus
 }

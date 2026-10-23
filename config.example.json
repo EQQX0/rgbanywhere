@@ -6,5 +6,6 @@
   "group_overrides": {},
   "preferred_monitor": null,
   "idle_rescan": true,
-  "icue_quit_on_close": false
+  "icue_quit_on_close": false,
+  "core_log_level": "info"
 }

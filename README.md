@@ -85,6 +85,7 @@ Copy `config.example.json` to `config.json`. The file and every key are optional
 | `idle_rescan` | `true` rescans when you return to an idle PC (for Logitech G HUB, which sleeps keyboard and mouse lights) |
 | `icue_quit_on_close` | `true` makes iCUE's X button quit iCUE. Running iCUE together with this app can knock Corsair RAM into a state where it ignores colors |
 | `deepcool_path` | Path to DeepCool.exe if it is not in `C:\DeepCool` |
+| `core_log_level` | How much the device core logs: `info` (default), `verbose` or `debug`. `debug` lists every detector it tries. Takes effect when the lighting daemon starts |
 
 ## Command line
 
@@ -94,11 +95,20 @@ python rgb.py FF3C00 breathing
 python rgb.py ram=A62700 fans=A62700
 python rgb.py brightness=60
 python rgb.py --restart          # re-detect devices
+python rgb.py --diagnose         # what was found and why things may be missing; changes nothing
 ```
 
 ## Troubleshooting
 
-Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
+If devices are missing or colors don't change, run this in PowerShell from the install folder (`%LOCALAPPDATA%\RGB Anywhere` after Setup). It only reads, so no light changes:
+
+```
+.\python\python.exe rgb.py --diagnose
+```
+
+It lists what the lighting daemon found: whether it runs as admin, the PawnIO driver state, the SMBus buses it opened, every device with its modes and how each mode takes colors, other RGB programs that are running, and a numbered list of likely problems. It saves the same text to `logs\diagnose-<time>.txt`. The daemon also writes this diagnosis to `logs\rgb.log` each time it detects devices.
+
+Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. The device core's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
 
