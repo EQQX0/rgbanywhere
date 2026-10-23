@@ -63,9 +63,13 @@ def _device(d):
             "active_mode": active, "modes": modes}
 
 
-def collect(core, client):
-    """Everything the daemon knows about detection, as plain data (sent to the app as JSON)."""
-    client.update()
+def collect(core, client, start_error=None):
+    """Everything the daemon knows about detection, as plain data (sent to the app as JSON). core and client are None
+    when OpenRGB did not start; start_error then says why."""
+    if client is not None:
+        client.update()
+    info = core.debug() if core is not None else {"started": False, "running": False, "pid": None}
+    info["start_error"] = start_error
     core_dir = getattr(core, "core_dir", os.path.join(HERE, "openrgb"))
     log_dir = os.path.join(getattr(core, "config_dir", os.path.join(HERE, "cache", "core")), "logs")
     logs = sorted(glob.glob(os.path.join(log_dir, "OpenRGB_*.log")))
@@ -75,8 +79,8 @@ def collect(core, client):
         "python": sys.executable,
         "os": platform.platform(),
         "install_dir": HERE,
-        "core_version": core.version(),
-        "core": core.debug(),
+        "core_version": core.version() if core is not None else "not started",
+        "core": info,
         "core_log": logs[-1] if logs else None,
         "core_log_problems": _log_problems(logs[-1] if logs else None),
         "pawnio": {
@@ -85,10 +89,10 @@ def collect(core, client):
             "modules": sorted(os.path.basename(p) for p in glob.glob(os.path.join(core_dir, "*.bin"))),
         },
         "helper_service": {"name": rgb.HELPER_SERVICE, "state": rgb.service_state(rgb.HELPER_SERVICE) if rgb.HELPER_SERVICE else None},
-        "conflicts": _running_conflicts([core.debug().get("pid")] if hasattr(core, "debug") else []),
+        "conflicts": _running_conflicts([info.get("pid")]),
         "config": {k: rgb.CFG[k] for k in ("ram_expected", "argb_leds", "helper_service", "core_log_level", "group_overrides")
                    if k in rgb.CFG},
-        "devices": [_device(x) for x in client.devices],
+        "devices": [_device(x) for x in client.devices] if client is not None else [],
     }
     d["hints"] = hints(d)
     return d

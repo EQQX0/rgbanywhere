@@ -8,7 +8,7 @@ a localhost socket (token in rgbd.token). Run by the "RGB Anywhere Lighting" sch
 
 Copyright (C) 2026 EQQX2
 SPDX-License-Identifier: GPL-3.0-or-later
-Starts the unmodified OpenRGB (GPL-2.0-or-later) from openrgb\ as a separate program; see NOTICE.
+Starts the unmodified OpenRGB (GPL-2.0-or-later) from openrgb\\ as a separate program; see NOTICE.
 """
 import hmac
 import json
@@ -30,6 +30,8 @@ _core = None
 _client = None
 _token = ""
 _busy = threading.Lock()  # one rescan at a time
+_start_error = None  # why OpenRGB did not start; requests report it until a rescan starts it
+_ready = threading.Event()  # set once the first start finished, well or not
 
 
 def _refresh_and_apply():
@@ -50,10 +52,50 @@ def _log_diagnosis():
         _log.exception("could not collect the diagnosis")
 
 
+def _start_core():
+    """Start OpenRGB and apply the saved colours. A failure is kept in _start_error: the daemon keeps serving, so the
+    app and --diagnose can show why, and a rescan tries again."""
+    global _core, _client, _start_error
+    core = None
+    try:
+        core = rc.SdkBackend(log_level=rgb.CFG.get("core_log_level", "info"), on_restart=_after_restart)
+        _client, _core, _start_error = rc.Client(core), core, None
+    except Exception as e:
+        if core is not None:
+            core.shutdown()
+        _core = _client = None
+        _start_error = "%s: %s" % (type(e).__name__, e)
+        _log.exception("could not start OpenRGB")
+        applog.event("core_start", ok=False, error=_start_error)
+        return
+    _log.info("OpenRGB: %s, %d devices", _core.version(), len(_client.devices))
+    _log_diagnosis()
+    _refresh_and_apply()
+
+
+def _after_restart():
+    """OpenRGB exited and SdkBackend started it again: it has forgotten the zone sizes and colours, so apply them again
+    (in a thread: the request that noticed still holds the backend's lock)."""
+    applog.event("core_restart", ok=True, restarts=_core.debug()["restarts"] if _core else None)
+
+    def go():
+        with _busy:
+            try:
+                _refresh_and_apply()
+            except Exception:
+                _log.exception("could not apply the colours after OpenRGB restarted")
+    threading.Thread(target=go, daemon=True, name="reapply").start()
+
+
 def _rescan():
     with _busy:
         helper = rgb.stop_helper()  # the cooler's sensor service disturbs RAM detection
         try:
+            if _core is None:  # it did not start before: try again from scratch
+                _start_core()
+                if _core is None:
+                    raise RuntimeError("OpenRGB did not start: %s" % _start_error)
+                return
             _core.rescan()
             time.sleep(1)
             _client.update()
@@ -64,6 +106,16 @@ def _rescan():
                 rgb.start_helper()
 
 
+def _need_core():
+    """The backend, once OpenRGB is up. While it is still detecting devices, wait (the app's request has 120 s)."""
+    _ready.wait(100)
+    if _core is None:
+        if not _ready.is_set():
+            raise RuntimeError("OpenRGB is still detecting devices; try again in a moment")
+        raise RuntimeError("OpenRGB did not start (%s). Run 'python rgb.py --diagnose' or press Rescan." % _start_error)
+    return _core
+
+
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
         try:
@@ -72,17 +124,17 @@ class Handler(socketserver.StreamRequestHandler):
                 raise PermissionError("bad token")
             cmd = req["cmd"]
             if cmd == "ping":
-                res = _core.version()
+                res = _core.version() if _core else "OpenRGB not started"
             elif cmd == "devices":
-                res = _core.devices()
+                res = _need_core().devices()
             elif cmd == "set_mode":
-                _core.set_mode(req["dev"], req["mode"]); res = None
+                _need_core().set_mode(req["dev"], req["mode"], key=req.get("key")); res = None
             elif cmd == "set_colors":
-                res = _core.set_colors(req["dev"], req["colors"])
+                res = _need_core().set_colors(req["dev"], req["colors"], key=req.get("key"))
             elif cmd == "debug":
-                res = diag.collect(_core, _client)
+                res = diag.collect(_core, _client, start_error=_start_error)
             elif cmd == "resize_zone":
-                _core.resize_zone(req["dev"], req["zone"], req["leds"]); res = None
+                _need_core().resize_zone(req["dev"], req["zone"], req["leds"], key=req.get("key")); res = None
             elif cmd == "rescan":
                 _rescan(); res = None
             else:
@@ -108,7 +160,7 @@ def reachable():
 
 
 def serve():
-    global _core, _client, _token
+    global _token
     try:
         server = Server(("127.0.0.1", rc.PORT), Handler)
     except OSError:
@@ -122,16 +174,12 @@ def serve():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     helper = rgb.stop_helper()
     try:
-        _core = rc.SdkBackend(log_level=rgb.CFG.get("core_log_level", "info"))
-        _client = rc.Client(_core)
-        _log.info("OpenRGB: %s, %d devices", _core.version(), len(_client.devices))
-        _log_diagnosis()
-        _refresh_and_apply()
+        with _busy:
+            _start_core()
     except Exception:
-        _log.exception("could not start OpenRGB")
-        applog.event("core_start", ok=False, error=applog.format_exc().strip().splitlines()[-1])
-        raise
+        _log.exception("could not apply the saved colours")
     finally:
+        _ready.set()
         if helper:
             rgb.start_helper()
     try:
@@ -139,7 +187,8 @@ def serve():
     except KeyboardInterrupt:
         pass
     try:
-        _core.shutdown()
+        if _core is not None:
+            _core.shutdown()
     finally:
         os._exit(0)  # the server threads would keep the process alive
 

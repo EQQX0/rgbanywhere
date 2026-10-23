@@ -166,20 +166,22 @@ def connect(wait=60):
 
     The daemon is elevated because RAM and some boards are reached over SMBus; this process need not be.
     """
+    last = None
     for attempt in range(wait):
         try:
             client = rgbcore_client.Client(rgbcore_client.RemoteBackend())
             _log.info("connected to the lighting daemon%s", " after %d attempts" % (attempt + 1) if attempt else "")
             return client
         except Exception as e:
+            last = "%s: %s" % (type(e).__name__, e)
             if attempt == 0:
                 _log.warning("lighting daemon not reachable (%s: %s); starting it", type(e).__name__, e)
                 r = _quiet("schtasks", "/run", "/tn", rgbcore_client.TASK_LIGHTING)
                 _log.info("schtasks /run 'RGB Anywhere Lighting' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
             time.sleep(1)
-    _log.error("Could not connect to the lighting daemon within %ds", wait)
-    applog.event("core_connect", ok=False, error="could not connect within %ds" % wait)
-    raise ConnectionError("Could not connect to the lighting daemon")
+    _log.error("Could not connect to the lighting daemon within %ds (last error: %s)", wait, last)
+    applog.event("core_connect", ok=False, error="could not connect within %ds" % wait, last=last)
+    raise ConnectionError("Could not connect to the lighting daemon (%s)" % last)
 
 
 def is_elevated():
