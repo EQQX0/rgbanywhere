@@ -29,9 +29,9 @@ from rgbcore_client import RGBColor
 _log = applog.get("lights")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE = os.path.join(HERE, "state.json")
-CONFIG = os.path.join(HERE, "config.json")
-ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before RGB Anywhere first changed it
+STATE = os.path.join(applog.DATA_DIR, "state.json")  # written by the app (no admin), only read by the daemon
+CONFIG = os.path.join(HERE, "config.json")  # settings the elevated daemon acts on: only admins can change them
+ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before RGB Anywhere first changed it (daemon)
 GROUPS = ("ram", "fans", "keyboard", "mouse", "gpu", "audio", "other")  # what the UI can target (only those a PC has)
 
 
@@ -154,7 +154,8 @@ def load_state():
         _log.exception("state.json is unreadable; using defaults. A copy was kept as %s", keep)
         applog.event("state_corrupt", ok=False, error="state.json unreadable", kept=keep)
         try:
-            os.replace(STATE, keep)
+            if not (applog.PROTECTED and applog.IS_ADMIN):  # the daemon never changes files in the user's folder
+                os.replace(STATE, keep)
         except OSError:
             pass
     # A bad color (an older rgb.py saved any argument as one) would make every device fail: fall back and say so.
@@ -172,6 +173,7 @@ def save_state(state):
     """Write atomically (temp file + replace) so a crash or a second process can't leave a half-written file."""
     tmp = "%s.%d.tmp" % (STATE, os.getpid())
     try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
         with open(tmp, "w") as f:
             json.dump(state, f)
         os.replace(tmp, STATE)

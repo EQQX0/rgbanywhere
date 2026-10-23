@@ -27,11 +27,11 @@ OpenRGB probes many buses, including SMBus on the motherboard. Close OpenRGB and
 
 ## Download
 
-Download `RGB-Anywhere-Setup.exe` (about 87 MB) from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The app is inside the file, so Setup needs no further download. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup checks the files against their SHA-256, unpacks them to `%LOCALAPPDATA%\RGB Anywhere` and runs the installer, which asks for admin once. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
+Download `RGB-Anywhere-Setup.exe` (about 87 MB) from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The app is inside the file, so Setup needs no further download. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup checks the files against their SHA-256 and asks for admin once. The admin step copies them into `C:\Program Files\RGB Anywhere`, checks them again there, unpacks them and runs the installer. Your settings, the app's logs and its tokens live in `%LOCALAPPDATA%\RGB Anywhere`. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
 
-To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. (This update path is new and has not been tried on a real PC yet.)
+To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. Updating from 0.2 or older moves the install from `%LOCALAPPDATA%\RGB Anywhere` to Program Files: the settings stay where they are, `config.json` and `original.json` move with the program, and the old program files are removed. (This update path has not been tried on a real PC yet.)
 
-To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts and the install folder, including your settings. The PawnIO driver stays, because other programs may use it.
+To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts, the install folder and your settings folder. The PawnIO driver stays, because other programs may use it.
 
 The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. When the driver is missing, Setup downloads its installer from the author's release page (github.com/namazso/PawnIO.Setup), checks the SHA-256, installs it silently and starts it. If that fails, or the driver is installed but Windows will not start it, Setup prints why and USB devices keep working. The release does not contain the driver.
 
@@ -91,7 +91,7 @@ From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit f
 
 ## config.json
 
-Copy `config.example.json` to `config.json`. The file and every key are optional.
+`config.json` sits in the install folder (`C:\Program Files\RGB Anywhere` after Setup). The lighting service acts on it as admin, so only admins can change it: open Notepad as administrator to edit it. Copy `config.example.json` to `config.json` if it is missing. The file and every key are optional.
 
 | Key | Meaning |
 |-----|---------|
@@ -137,13 +137,13 @@ rgbctl rescan
 rgbctl describe                    # the command list as JSON, for an agent to read
 ```
 
-`rgbctl.cmd` sits in the install folder (`%LOCALAPPDATA%\RGB Anywhere`). Tell an agent to run `rgbctl describe` first. From a source checkout use `python rgbctl.py`.
+`rgbctl.cmd` sits in the install folder (`C:\Program Files\RGB Anywhere`). Tell an agent to run `rgbctl describe` first. From a source checkout use `python rgbctl.py`.
 
 The app serves this on 127.0.0.1:47824 and needs the token in `control.token` next to it. Any program running as your user can read that file, so any such program can control your lights.
 
 ## Troubleshooting
 
-If devices are missing or colors don't change, run this in PowerShell from the install folder (`%LOCALAPPDATA%\RGB Anywhere` after Setup). It only reads, so no light changes:
+If devices are missing or colors don't change, run this in PowerShell from the install folder (`C:\Program Files\RGB Anywhere` after Setup). It only reads, so no light changes:
 
 ```
 .\python\python.exe rgb.py --diagnose
@@ -160,7 +160,7 @@ It lists what the lighting daemon found: whether it runs as admin, whether OpenR
 | Status "Lighting service not running" | The daemon does not answer. Run `schtasks /run /tn "RGB Anywhere Lighting"`; if it stops again, `logs\errors.log` says why (for example "port 47823 ... is taken by another program"). |
 | "<device> has 0 LEDs" | An addressable header with no size. Set `argb_leds` in `config.json` and press Rescan. |
 
-Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
+The app's logs live in `%LOCALAPPDATA%\RGB Anywhere\logs`, the lighting service's in `logs\` in the install folder (both in one `logs\` folder for a source checkout). Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
 
 Razer devices that keep their own colors are usually being driven by Razer Synapse. In Synapse, set each Razer device's lighting to Static, color black, or quit Synapse and turn it off under Task Manager > Startup apps. `--diagnose` names the RGB programs it finds running (Razer Synapse, iCUE, G HUB, Armoury Crate, SignalRGB, SteelSeries GG, NZXT CAM, L-Connect and others) and lists devices that only have effect modes, which RGB Anywhere leaves alone.
 
@@ -169,5 +169,7 @@ Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at
 The cooler screen feature needs a DeepCool LT-series cooler with the DeepCool app installed.
 
 ## Security notes
+
+The lighting service runs as admin, so its code must not be changeable without admin rights. Setup puts the program in Program Files, owned by Administrators, where normal programs can only read it; the service only reads your settings folder and never writes there. Before 0.3 the program lived in `%LOCALAPPDATA%\RGB Anywhere`, which any program running as you could change, and through the service gain admin rights without a prompt: update with Setup to move it. A source checkout installed with `install.ps1` has the same weakness, and the installer warns about it.
 
 The phone remote is off by default. When you turn it on, it listens on your LAN with a random token in `state.json`. Anyone with the link controls your lights. The daemon listens on 127.0.0.1 only and checks a token stored in `rgbd.token`. The `rgbctl` API listens on 127.0.0.1:47824 and checks `control.token`.

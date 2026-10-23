@@ -39,6 +39,7 @@ sys.path.insert(0, HERE)
 import applog  # noqa: E402
 
 applog.setup("app")  # before anything else, so even a failure while starting up is recorded
+os.makedirs(applog.DATA_DIR, exist_ok=True)  # settings, tokens and caches (see applog.DATA_DIR)
 log = applog.get("app")
 plog = applog.get("phone")
 
@@ -59,16 +60,16 @@ TITLE = "RGB Anywhere"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
 ICON = os.path.join(HERE, "rgb.ico")
-CACHE = os.path.join(HERE, "cache")
-ACCENT_BACKUP = os.path.join(HERE, "accent_backup.json")  # the user's Windows accent before we synced it
-PROFILES = os.path.join(HERE, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
+CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's
+ACCENT_BACKUP = os.path.join(applog.DATA_DIR, "accent_backup.json")  # the user's Windows accent before we synced it
+PROFILES = os.path.join(applog.DATA_DIR, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
 NO_WINDOW = 0x08000000
 PREFERRED_MONITOR = rgb.CFG.get("preferred_monitor")  # config.json: open on the monitor whose hardware ID contains this (e.g. "MSI"); None = leave the window where Windows puts it
-UPLOADS = os.path.join(HERE, "cache", "uploads")
-STAGED = os.path.join(HERE, "cache", "staged")  # previews of pictures waiting in the editor
+UPLOADS = os.path.join(CACHE, "uploads")
+STAGED = os.path.join(CACHE, "staged")  # previews of pictures waiting in the editor
 PHONE_PORT = 47822
 CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 127.0.0.1 only, bearer token from control.token
-CONTROL_TOKEN = os.path.join(HERE, "control.token")
+CONTROL_TOKEN = os.path.join(applog.DATA_DIR, "control.token")
 CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
                    "rescan", "set_sync_accent", "set_exit"}
 FW_RULE = "RGB Anywhere Phone"

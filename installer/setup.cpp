@@ -1,11 +1,12 @@
 // RGB Anywhere Setup: a small installer window. The release build carries the app zip inside the exe (see
 // installerundle.ps1); a plain build downloads the latest release zip instead. Either way it checks the zip's
-// SHA-256, unpacks it to %LOCALAPPDATA%\RGB Anywhere and runs install.ps1 elevated (Windows shows its permission
-// prompt at that point). No console window.
+// SHA-256 and hands it to one elevated step (Windows shows its permission prompt then), which unpacks it to
+// %ProgramFiles%\RGB Anywhere and runs install.ps1. The code goes to Program Files because the lighting daemon runs it
+// as admin: only admins may change it. The user's settings stay in %LOCALAPPDATA%\RGB Anywhere. No console window.
 //
 //   RGB-Anywhere-Setup.exe          normal use
 //   RGB-Anywhere-Setup.exe /auto    start installing with the default choices, no clicking (for testing)
-//   RGBANYWHERE_NO_INSTALL=1        stop after unpacking (for testing; skips the permission prompt)
+//   RGBANYWHERE_NO_INSTALL=1        stop after checking the zip (for testing; skips the permission prompt)
 //
 // Copyright (C) 2026 EQQX2
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -48,7 +49,7 @@ static HBRUSH g_white, g_band;
 static int g_dpi = 96, g_page = PAGE_OPTIONS;
 static volatile bool g_cancel = false, g_elevated = false;
 static bool g_success = false, g_launch = true, g_auto = false;
-static std::wstring g_dest, g_log;
+static std::wstring g_dest, g_legacy, g_log;
 
 static int S(int v) { return MulDiv(v, g_dpi, 96); }
 
@@ -128,20 +129,6 @@ static std::string sha256_file(const std::wstring &path)
     return std::string(hex, 64);
 }
 
-static DWORD run_hidden(const std::wstring &cmd, const std::wstring &dir)
-{
-    STARTUPINFOW si = {sizeof si};
-    PROCESS_INFORMATION pi = {};
-    std::wstring c = cmd;
-    if (!CreateProcessW(NULL, &c[0], NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, dir.empty() ? NULL : dir.c_str(), &si, &pi)) return (DWORD)-1;
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return code;
-}
-
 // The zip can ride inside this exe: [stub exe][zip][64 hex chars of its SHA-256][zip size, 8 bytes LE]["RGBAPAY1"].
 struct Payload { bool found; unsigned long long off, size, total; std::string sha; };
 
@@ -203,18 +190,37 @@ static bool copy_range(const std::wstring &src, unsigned long long from, unsigne
 
 struct Options { bool desktop, startup; };
 
-// An update runs this elevated instead of unpacking first: the lighting daemon (elevated), OpenRGB and the app keep
-// files in the install folder open, and only an elevated process can end the daemon. It frees the folder, unpacks
-// the zip and then runs install.ps1 as a first install does.
-static const char UPDATE_PS1[] = R"PS(param([string]$Dir, [string]$Zip, [switch]$Desktop, [switch]$NoStartup)
+// The elevated step, for a first install and an update alike. Setup itself runs without admin and cannot write to
+// Program Files, so it only prepares the zip and the uninstaller in %TEMP% and checks them. A normal process can still
+// change files there, so this step copies both into the protected folder first and checks their SHA-256 again there.
+// It is passed inline (-EncodedCommand), not as a file another process could edit, after a prelude that sets $Dir,
+// $Zip, $ZipSha, $Stub, $StubSha, $Legacy, $Desktop and $NoStartup. It frees the folder (the lighting daemon, OpenRGB
+// and the app keep files open, and an install from before 0.3 ran from $Legacy), unpacks, then runs install.ps1.
+static const char INSTALL_PS1[] = R"PS($ErrorActionPreference = 'Stop'
+New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 $log = Join-Path $Dir 'install.log'
-Stop-ScheduledTask -TaskName 'RGB Anywhere Lighting' -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ProcessId -ne $PID -and
-        $_.ExecutablePath.StartsWith($Dir + '\', [StringComparison]::OrdinalIgnoreCase) } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-Start-Sleep -Seconds 2
-& "$env:SystemRoot\System32\tar.exe" -xf $Zip -C $Dir --strip-components=1 2>&1 | Out-File $log -Encoding utf8
-if ($LASTEXITCODE) { "Unpacking failed (tar exit code $LASTEXITCODE)." | Add-Content $log; exit 3 }
+try {
+    Stop-ScheduledTask -TaskName 'RGB Anywhere Lighting' -ErrorAction SilentlyContinue
+    foreach ($d in @($Dir, $Legacy)) {
+        Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ProcessId -ne $PID -and
+                $_.ExecutablePath.StartsWith($d + '\', [StringComparison]::OrdinalIgnoreCase) } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
+    Start-Sleep -Seconds 2
+    $z = Join-Path $Dir 'setup-payload.zip'
+    Copy-Item -LiteralPath $Zip -Destination $z -Force
+    if ((Get-FileHash -LiteralPath $z -Algorithm SHA256).Hash -ne $ZipSha) { throw 'the app files changed after Setup checked them' }
+    $u = Join-Path $Dir 'Uninstall.exe.new'
+    Copy-Item -LiteralPath $Stub -Destination $u -Force
+    if ((Get-FileHash -LiteralPath $u -Algorithm SHA256).Hash -ne $StubSha) { throw 'Uninstall.exe changed after Setup wrote it' }
+    & "$env:SystemRoot\System32\tar.exe" -xf $z -C $Dir --strip-components=1 2>&1 | Out-File $log -Encoding utf8
+    if ($LASTEXITCODE) { throw "unpacking failed (tar exit code $LASTEXITCODE)" }
+    Move-Item -LiteralPath $u -Destination (Join-Path $Dir 'Uninstall.exe') -Force
+    Remove-Item -LiteralPath $z -Force
+} catch {
+    "FAILED: $_" | Add-Content $log
+    exit 3
+}
 $a = @{ Quiet = $true }
 if ($Desktop) { $a.Desktop = $true }
 if ($NoStartup) { $a.NoStartup = $true }
@@ -222,12 +228,31 @@ if ($NoStartup) { $a.NoStartup = $true }
 exit $LASTEXITCODE
 )PS";
 
-static bool write_file(const std::wstring &path, const char *text)
+static std::wstring widen(const char *s) { return std::wstring(s, s + strlen(s)); }
+
+// A PowerShell string literal: single quotes, with any single quote doubled
+static std::wstring ps_quote(const std::wstring &s)
 {
-    FILE *f = _wfopen(path.c_str(), L"wb");
-    if (!f) return false;
-    bool ok = fwrite(text, 1, strlen(text), f) == strlen(text);
-    return fclose(f) == 0 && ok;
+    std::wstring out = L"'";
+    for (wchar_t c : s) { out += c; if (c == L'\'') out += L'\''; }
+    return out + L"'";
+}
+
+// powershell -EncodedCommand takes the script as base64 of its UTF-16LE text
+static std::wstring encode_command(const std::wstring &script)
+{
+    static const char *b64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::vector<unsigned char> b;
+    for (wchar_t c : script) { b.push_back((unsigned char)(c & 0xFF)); b.push_back((unsigned char)((c >> 8) & 0xFF)); }
+    std::wstring out;
+    for (size_t i = 0; i < b.size(); i += 3) {
+        unsigned v = b[i] << 16 | (i + 1 < b.size() ? b[i + 1] << 8 : 0) | (i + 2 < b.size() ? b[i + 2] : 0);
+        out += (wchar_t)b64[v >> 18 & 63];
+        out += (wchar_t)b64[v >> 12 & 63];
+        out += i + 1 < b.size() ? (wchar_t)b64[v >> 6 & 63] : L'=';
+        out += i + 2 < b.size() ? (wchar_t)b64[v & 63] : L'=';
+    }
+    return out;
 }
 
 static DWORD WINAPI worker(LPVOID p)
@@ -294,36 +319,25 @@ static DWORD WINAPI worker(LPVOID p)
     }
     if (g_cancel) { DeleteFileW(zip.c_str()); finish(false, L""); return 0; }
 
-    post_status(L"Unpacking files...");
-    post_progress(80);
-    SHCreateDirectoryExW(NULL, g_dest.c_str(), NULL);
-    wchar_t sys[MAX_PATH];
-    GetSystemDirectoryW(sys, MAX_PATH);
-    // An earlier install may be running from the folder; then the elevated step unpacks (see UPDATE_PS1)
-    bool update = GetFileAttributesW((g_dest + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES;
-    std::wstring script = std::wstring(tmp) + L"rgbanywhere-update.ps1";
-    if (update) {
-        if (!write_file(script, UPDATE_PS1)) {
-            DeleteFileW(zip.c_str());
-            finish(false, L"Could not write the update script to the temp folder.");
-            return 0;
-        }
-    } else {
-        DWORD rc = run_hidden(std::wstring(L"\"") + sys + L"\\tar.exe\" -xf \"" + zip + L"\" -C \"" + g_dest + L"\" --strip-components=1", L"");
-        DeleteFileW(zip.c_str());
-        if (rc != 0) {
-            finish(false, L"Could not unpack the files. Check that the disk is not full and run Setup again.");
-            return 0;
-        }
-    }
+    // The uninstaller is this exe without the zip; the elevated step moves it into the install folder
     wchar_t self[MAX_PATH];
-    GetModuleFileNameW(NULL, self, MAX_PATH);   // this exe becomes the uninstaller (Settings > Apps runs it with /uninstall)
-    if (pay.found) copy_range(self, 0, pay.off, g_dest + L"\\Uninstall.exe", 0, 0, L"");   // the stub alone, without the zip
-    else CopyFileW(self, (g_dest + L"\\Uninstall.exe").c_str(), FALSE);
+    GetModuleFileNameW(NULL, self, MAX_PATH);   // Settings > Apps runs it with /uninstall
+    std::wstring stub = std::wstring(tmp) + L"RGBAnywhere-Uninstall.exe";
+    bool stub_ok = pay.found ? copy_range(self, 0, pay.off, stub, 0, 0, L"") : CopyFileW(self, stub.c_str(), FALSE) != 0;
+    std::string zip_sha = sha256_file(zip), stub_sha = sha256_file(stub);
+    auto cleanup = [&]() { DeleteFileW(zip.c_str()); DeleteFileW(stub.c_str()); };
+    if (!stub_ok || zip_sha.size() != 64 || stub_sha.size() != 64) {
+        cleanup();
+        finish(false, L"Could not prepare the files in the temp folder. Check that the disk is not full and run Setup again.");
+        return 0;
+    }
+    // An earlier install: in Program Files, or (before 0.3) in %LOCALAPPDATA%, which the elevated step moves from
+    bool update = GetFileAttributesW((g_dest + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES ||
+                  GetFileAttributesW((g_legacy + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES;
     if (!env(L"RGBANYWHERE_NO_INSTALL").empty()) {
-        if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
+        cleanup();
         post_progress(100);
-        finish(true, update ? L"An earlier install is there; updating it needs the install step, which was skipped." : L"Unpacked (install step skipped).");
+        finish(true, L"The files are ready (install step skipped).");
         return 0;
     }
 
@@ -331,23 +345,26 @@ static DWORD WINAPI worker(LPVOID p)
     post_progress(88);
     PostMessageW(g_wnd, WM_MARQUEE, 1, 0);
     g_elevated = true;
-    std::wstring args = update
-        ? L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + L"\" -Dir \"" + g_dest + L"\" -Zip \"" + zip + L"\""
-        : L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + g_dest + L"\\install.ps1\" -Quiet";
-    if (opt.desktop) args += L" -Desktop";
-    if (!opt.startup) args += L" -NoStartup";
+    std::wstring script = L"$Dir = " + ps_quote(g_dest) + L"; $Legacy = " + ps_quote(g_legacy) + L"; $Zip = " + ps_quote(zip) +
+                          L"; $ZipSha = " + ps_quote(widen(zip_sha.c_str())) + L"; $Stub = " + ps_quote(stub) +
+                          L"; $StubSha = " + ps_quote(widen(stub_sha.c_str())) + L"; $Desktop = $" +
+                          (opt.desktop ? L"true" : L"false") + L"; $NoStartup = $" + (opt.startup ? L"false" : L"true") +
+                          L"\n" + widen(INSTALL_PS1);
+    std::wstring args = L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand " + encode_command(script);
+    wchar_t sys[MAX_PATH];
+    GetSystemDirectoryW(sys, MAX_PATH);
     std::wstring ps = std::wstring(sys) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
     SHELLEXECUTEINFOW sei = {sizeof sei};
     sei.fMask = SEE_MASK_NOCLOSEPROCESS;
     sei.lpVerb = L"runas";
     sei.lpFile = ps.c_str();
     sei.lpParameters = args.c_str();
-    sei.lpDirectory = g_dest.c_str();
+    sei.lpDirectory = sys;
     sei.nShow = SW_HIDE;
     if (!ShellExecuteExW(&sei)) {
         DWORD e = GetLastError();
         g_elevated = false;
-        if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
+        cleanup();
         finish(false, e == ERROR_CANCELLED
                           ? L"Permission was declined. RGB Anywhere needs it to run the lighting service. Run Setup again and choose Yes."
                           : L"Could not start the installer step.");
@@ -359,7 +376,7 @@ static DWORD WINAPI worker(LPVOID p)
     GetExitCodeProcess(sei.hProcess, &code);
     CloseHandle(sei.hProcess);
     g_elevated = false;
-    if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
+    cleanup();
     if (code != 0) { finish(false, L"The setup step failed. The log shows what went wrong."); return 0; }
     post_progress(100);
     finish(true, L"");
@@ -558,12 +575,12 @@ static int uninstall()
     GetModuleFileNameW(NULL, self, MAX_PATH);
     std::wstring dir = self;
     dir.resize(dir.find_last_of(L'\\'));
-    if (MessageBoxW(NULL, L"Remove RGB Anywhere from this PC?\n\nYour settings in the install folder are deleted. The PawnIO driver stays installed.",
+    if (MessageBoxW(NULL, L"Remove RGB Anywhere from this PC?\n\nYour settings are deleted too. The PawnIO driver stays installed.",
                     L"Uninstall RGB Anywhere", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return 2;
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    std::wstring script = std::wstring(tmp) + L"rgbanywhere-uninstall.ps1";
-    if (!CopyFileW((dir + L"\\uninstall.ps1").c_str(), script.c_str(), FALSE)) {
+    // Run from the install folder: in Program Files only admins can change it (a copy in %TEMP% could be swapped).
+    // PowerShell reads the whole script before it runs, and the script deletes the folder only after it exits.
+    std::wstring script = dir + L"\\uninstall.ps1";
+    if (GetFileAttributesW(script.c_str()) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(NULL, L"uninstall.ps1 is missing from the install folder.", L"Uninstall RGB Anywhere", MB_OK | MB_ICONERROR);
         return 1;
     }
@@ -582,7 +599,6 @@ static int uninstall()
     DWORD code = 1;
     GetExitCodeProcess(sei.hProcess, &code);
     CloseHandle(sei.hProcess);
-    DeleteFileW(script.c_str());
     MessageBoxW(NULL, code == 0 ? L"RGB Anywhere was removed." : L"Could not remove everything. Close RGB Anywhere and try again.",
                 L"Uninstall RGB Anywhere", MB_OK | (code == 0 ? MB_ICONINFORMATION : MB_ICONERROR));
     return (int)code;
@@ -592,9 +608,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd, int)
 {
     if (cmd && wcsstr(cmd, L"/uninstall")) return uninstall();
     g_auto = cmd && wcsstr(cmd, L"/auto");
-    wchar_t local[MAX_PATH];
+    wchar_t local[MAX_PATH], pf[MAX_PATH];
     if (FAILED(SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, local))) return 1;
-    g_dest = std::wstring(local) + L"\\RGB Anywhere";
+    if (FAILED(SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILES, NULL, 0, pf))) return 1;
+    g_dest = std::wstring(pf) + L"\\RGB Anywhere";       // the code: only admins can change it
+    g_legacy = std::wstring(local) + L"\\RGB Anywhere";  // the user's settings; also where installs before 0.3 put the code
 
     INITCOMMONCONTROLSEX ic = {sizeof ic, ICC_PROGRESS_CLASS};
     InitCommonControlsEx(&ic);
