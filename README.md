@@ -98,6 +98,28 @@ python rgb.py --restart          # re-detect devices
 python rgb.py --diagnose         # what was found and why things may be missing; changes nothing
 ```
 
+## Control from scripts and AI agents
+
+`rgbctl` drives the running app. Every command prints one JSON object, and the exit code is 0 for done, 1 for refused or bad arguments, 2 when the app is not running.
+
+```
+rgbctl status                      # mode, color, brightness, presets, profiles, features
+rgbctl color red                   # RRGGBB, #RRGGBB or a name
+rgbctl color FF3C00 --target ram   # all (default), ram, fans, keyboard, mouse
+rgbctl brightness 60
+rgbctl off                         # lights off, monitors off
+rgbctl on
+rgbctl presets / rgbctl preset 2
+rgbctl profiles / rgbctl profile <id>
+rgbctl monitors-off
+rgbctl rescan
+rgbctl describe                    # the command list as JSON, for an agent to read
+```
+
+`rgbctl.cmd` sits in the install folder (`%LOCALAPPDATA%\RGB Anywhere`). Tell an agent to run `rgbctl describe` first. From a source checkout use `python rgbctl.py`.
+
+The app serves this on 127.0.0.1:47824 and needs the token in `control.token` next to it. Any program running as your user can read that file, so any such program can control your lights.
+
 ## Troubleshooting
 
 If devices are missing or colors don't change, run this in PowerShell from the install folder (`%LOCALAPPDATA%\RGB Anywhere` after Setup). It only reads, so no light changes:
@@ -116,4 +138,4 @@ The cooler screen feature needs a DeepCool LT-series cooler with the DeepCool ap
 
 ## Security notes
 
-The phone remote is off by default. When you turn it on, it listens on your LAN with a random token in `state.json`. Anyone with the link controls your lights. The daemon listens on 127.0.0.1 only and checks a token stored in `rgbd.token`.
+The phone remote is off by default. When you turn it on, it listens on your LAN with a random token in `state.json`. Anyone with the link controls your lights. The daemon listens on 127.0.0.1 only and checks a token stored in `rgbd.token`. The `rgbctl` API listens on 127.0.0.1:47824 and checks `control.token`.

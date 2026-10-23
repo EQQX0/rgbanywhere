@@ -52,3 +52,4 @@ build_all.log
 
 installer/*.exe
 installer/*.o
+control.token

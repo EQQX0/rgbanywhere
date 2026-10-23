@@ -37,6 +37,7 @@ $files = '*.py','*.pyw','rgbcore.dll','PawnIOLib.dll','hidapi-hotplug.dll','libu
          'rgb.ico','config.example.json','requirements.txt','install.ps1','uninstall.ps1','LICENSE','NOTICE','THIRD_PARTY_LICENSES.md','README.md'
 foreach ($f in $files) { Copy-Item (Join-Path $here $f) $stage -Force }
 Copy-Item (Join-Path $here 'ui') $stage -Recurse -Force
+[IO.File]::WriteAllText("$stage\rgbctl.cmd", "@echo off`r`n`"%~dp0python\python.exe`" -I `"%~dp0rgbctl.py`" %*`r`n")
 [IO.File]::WriteAllText("$stage\Install.cmd", "@echo off`r`ncd /d `"%~dp0`"`r`npowershell -NoProfile -ExecutionPolicy Bypass -File install.ps1`r`npause`r`n")
 Set-Content "$stage\version.txt" $Version -Encoding ascii
 [IO.File]::WriteAllText("$stage\SOURCE.txt", @"

@@ -66,6 +66,10 @@ PREFERRED_MONITOR = rgb.CFG.get("preferred_monitor")  # config.json: open on the
 UPLOADS = os.path.join(HERE, "cache", "uploads")
 STAGED = os.path.join(HERE, "cache", "staged")  # previews of pictures waiting in the editor
 PHONE_PORT = 47822
+CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 127.0.0.1 only, bearer token from control.token
+CONTROL_TOKEN = os.path.join(HERE, "control.token")
+CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
+                   "rescan", "set_sync_accent"}
 FW_RULE = "RGB Control Phone"
 # What a phone may call. Deliberately excludes desktop-only things (file dialog, calibration test mode).
 PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "save_preset",
@@ -429,6 +433,57 @@ class PhoneHandler(Handler):
             plog.warning("bad request body for %s: %s", applog.redact(self.path), e)
         except Exception:
             self.fail("POST")
+
+
+class ControlHandler(BaseHTTPRequestHandler):
+    """The local control API behind rgbctl.py. Loopback only; POST /call/<method> with {"args": [...]} and a bearer token."""
+    app = None
+
+    def log_message(self, fmt, *args):
+        plog.debug("control %s", applog.redact(fmt % args))
+
+    def send_json(self, obj, code=200):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def allowed(self):
+        # The Host check stops a web page from reaching this through DNS rebinding; the token stops other local users' tools.
+        if self.headers.get("Host", "") not in ("127.0.0.1:%d" % CONTROL_PORT, "localhost:%d" % CONTROL_PORT):
+            return False
+        got = self.headers.get("Authorization", "")
+        return got.startswith("Bearer ") and secrets.compare_digest(got[7:], self.app.control_token)
+
+    def do_GET(self):
+        if not self.allowed():
+            return self.send_json({"error": "unauthorized"}, 401)
+        if self.path == "/status":
+            return self.send_json(Api(self.app, source="cli").init())
+        self.send_json({"error": "not found"}, 404)
+
+    def do_POST(self):
+        if not self.allowed():
+            return self.send_json({"error": "unauthorized"}, 401)
+        if not self.path.startswith("/call/") or self.path[6:] not in CONTROL_METHODS:
+            return self.send_json({"error": "unknown method"}, 404)
+        name = self.path[6:]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 100_000:
+                return self.send_json({"error": "body too large"}, 413)
+            args = json.loads(self.rfile.read(n) or b"{}").get("args", [])
+            result = getattr(Api(self.app, source="cli"), name)(*args)
+            self.app.after_remote()
+            applog.event("control_api", ok=True, method=name)
+            self.send_json({"ok": True, "result": result})
+        except Exception as e:
+            plog.exception("control API %s failed", name)
+            applog.event("control_api", ok=False, method=name, error="%s: %s" % (type(e).__name__, e))
+            self.send_json({"error": "%s: %s" % (type(e).__name__, e)}, 400)
 
 
 # ---------- app ----------
@@ -1057,6 +1112,28 @@ class App:
                 self.js("rgbBusy", "")
         threading.Thread(target=work, daemon=True).start()
 
+    # ----- control (rgbctl) -----
+    def control_start(self):
+        try:
+            if os.path.exists(CONTROL_TOKEN):
+                with open(CONTROL_TOKEN, encoding="ascii") as f:
+                    self.control_token = f.read().strip()
+            if len(getattr(self, "control_token", "")) < 20:
+                self.control_token = secrets.token_urlsafe(24)
+                with open(CONTROL_TOKEN, "w", encoding="ascii") as f:
+                    f.write(self.control_token)
+            applog.add_secret(self.control_token)
+            ControlHandler.app = self
+            srv = ThreadingHTTPServer(("127.0.0.1", CONTROL_PORT), ControlHandler)
+        except OSError as e:
+            log.exception("can't start the control server on port %d", CONTROL_PORT)
+            applog.event("control_server", ok=False, error="%s: %s" % (type(e).__name__, e))
+            return False
+        threading.Thread(target=srv.serve_forever, daemon=True, name="control-http").start()
+        log.info("control server listening on 127.0.0.1:%d", CONTROL_PORT)
+        applog.event("control_server", ok=True, port=CONTROL_PORT)
+        return True
+
     # ----- phone -----
     def phone_start(self):
         if self.phone_server:
@@ -1603,6 +1680,7 @@ def main():
             threading.Thread(target=_guarded(target, name), daemon=True, name=name).start()
         app.jobs.put("connect")
         app.sync_accent()
+        app.control_start()
         if app.state.get("phone_enabled"):
             app.phone_start()
 
