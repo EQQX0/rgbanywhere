@@ -23,6 +23,11 @@ def load():
         ctypes.windll = mock.MagicMock(**{"kernel32.GetConsoleWindow.return_value": 0})
     for name in ("imageio_ffmpeg", "pystray", "qrcode", "webview", "webview.dom", "winaccent", "icue", "winreg"):
         sys.modules.setdefault(name, mock.MagicMock())
+    try:
+        importlib.import_module("PIL.Image")
+    except ImportError:  # CI installs only openrgb-python
+        for name in ("PIL", "PIL.Image", "PIL.ImageEnhance", "PIL.ImageFilter", "PIL.ImageOps"):
+            sys.modules[name] = mock.MagicMock()
     sys.path.insert(0, ROOT)
     loader = importlib.machinery.SourceFileLoader("rgb_app", os.path.join(ROOT, "rgb_app.pyw"))
     spec = importlib.util.spec_from_loader("rgb_app", loader)
