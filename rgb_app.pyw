@@ -39,10 +39,42 @@ sys.path.insert(0, HERE)
 import applog  # noqa: E402
 
 applog.setup("app")  # before anything else, so even a failure while starting up is recorded
+os.makedirs(applog.DATA_DIR, exist_ok=True)  # settings, tokens and caches (see applog.DATA_DIR)
+
+# Program files an install before 0.3 left in the data folder. install.ps1 (admin) moved its settings; the files are
+# removed here, as the user, because deleting in a folder a normal process controls is never done as admin.
+LEGACY_CODE_DIRS = ("python", "openrgb", "ui", "android", "installer", "__pycache__", os.path.join("cache", "core"))
+LEGACY_CODE_EXT = (".py", ".pyw", ".ps1", ".cmd", ".ico", ".exe")
+LEGACY_CODE_FILES = ("version.txt", "requirements.txt", "LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "README.md",
+                     "config.example.json", "config.json", "original.json", "rgbd.token", "install.log")
+
+
+def remove_legacy_code(data=None):
+    """Remove an old install's program files from the data folder, once the code runs from Program Files."""
+    data = data or applog.DATA_DIR
+    if not applog.PROTECTED or os.path.normcase(data) == os.path.normcase(HERE) or \
+            not os.path.isfile(os.path.join(data, "rgbd.py")):
+        return []
+    gone = []
+    for d in LEGACY_CODE_DIRS:
+        p = os.path.join(data, d)
+        if os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+            gone.append(d)
+    for name in os.listdir(data):
+        p = os.path.join(data, name)
+        if os.path.isfile(p) and (name.lower().endswith(LEGACY_CODE_EXT) or name in LEGACY_CODE_FILES):
+            try:
+                os.remove(p)
+                gone.append(name)
+            except OSError:
+                pass
+    return gone
 log = applog.get("app")
 plog = applog.get("phone")
 
 import cooler  # noqa: E402
+import handback  # noqa: E402
 import icue  # noqa: E402
 import media  # noqa: E402
 import pystray  # noqa: E402
@@ -58,16 +90,16 @@ TITLE = "RGB Anywhere"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
 ICON = os.path.join(HERE, "rgb.ico")
-CACHE = os.path.join(HERE, "cache")
-ACCENT_BACKUP = os.path.join(HERE, "accent_backup.json")  # the user's Windows accent before we synced it
-PROFILES = os.path.join(HERE, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
+CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's
+ACCENT_BACKUP = os.path.join(applog.DATA_DIR, "accent_backup.json")  # the user's Windows accent before we synced it
+PROFILES = os.path.join(applog.DATA_DIR, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
 NO_WINDOW = 0x08000000
 PREFERRED_MONITOR = rgb.CFG.get("preferred_monitor")  # config.json: open on the monitor whose hardware ID contains this (e.g. "MSI"); None = leave the window where Windows puts it
-UPLOADS = os.path.join(HERE, "cache", "uploads")
-STAGED = os.path.join(HERE, "cache", "staged")  # previews of pictures waiting in the editor
+UPLOADS = os.path.join(CACHE, "uploads")
+STAGED = os.path.join(CACHE, "staged")  # previews of pictures waiting in the editor
 PHONE_PORT = 47822
 CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 127.0.0.1 only, bearer token from control.token
-CONTROL_TOKEN = os.path.join(HERE, "control.token")
+CONTROL_TOKEN = os.path.join(applog.DATA_DIR, "control.token")
 CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
                    "rescan", "set_sync_accent", "set_exit"}
 FW_RULE = "RGB Anywhere Phone"
@@ -1023,7 +1055,7 @@ class App:
                 failed = rgb.apply(client, st, log=self._rgb_log)
                 told = rgb.handback_message() if st.get("mode") == "original" else ""
                 if told and told != self.handback_told:  # once per visit to Original, not on every rescan
-                    self.js("rgbToast", told, "info")
+                    self.hand_back(rgb.handback_apps(), told)
                 self.handback_told = told
                 if failed:
                     # some/all devices failed: OpenRGB probably restarted (Rescan, sleep). Reconnect once and retry.
@@ -1042,6 +1074,18 @@ class App:
                 # the daemon answers with OpenRGB's start error when that is the problem (see rgbd._need_core)
                 self.set_status("OpenRGB did not start" if "OpenRGB did not start" in str(e) else
                                 "Lighting service not running", "bad")
+
+    def hand_back(self, apps, fallback):
+        """Restart the vendor apps of the devices Original handed back, so they send their own lighting again (in a
+        thread: restarting an app takes a few seconds), and tell the user what happened."""
+        def go():
+            try:
+                msg = handback.summary(handback.restart(apps)) or fallback
+            except Exception:
+                log.exception("hand back failed")
+                msg = fallback
+            self.js("rgbToast", msg, "info")
+        threading.Thread(target=go, daemon=True, name="handback").start()
 
     def idle_watch(self):
         """Rescan when the user comes back to an idle PC, to take the keyboard and mouse back (see IDLE_AFTER)."""
@@ -1720,6 +1764,13 @@ def main():
         return
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     log.info("packages: %s", "; ".join(applog._versions()))
+    try:
+        gone = remove_legacy_code()
+        if gone:
+            log.info("removed the program files of the install before 0.3 from %s: %s", applog.DATA_DIR, ", ".join(gone))
+            applog.event("legacy_cleanup", ok=True, removed=gone)
+    except Exception:
+        log.exception("could not remove the old program files from %s", applog.DATA_DIR)
 
     http = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=http.serve_forever, daemon=True, name="local-http").start()

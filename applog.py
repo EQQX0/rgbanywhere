@@ -1,5 +1,6 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-"""Logging and diagnostics for RGB Anywhere. Everything lands in C:\\Users\\Admin\\RGB\\logs\\ :
+"""Logging and diagnostics for RGB Anywhere. The app writes to logs\\ in the user's data folder, the elevated lighting
+daemon to logs\\ in the install folder (the same folder for a source checkout):
 
   rgb.log          everything (debug and up), rotating, 3 MB x 5
   errors.log       warnings and errors only, with stack traces, rotating
@@ -26,7 +27,45 @@ import traceback
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOG_DIR = os.environ.get("RGB_LOG_DIR") or os.path.join(HERE, "logs")  # the env override lets tests keep out of the real logs
+
+
+def _is_admin():
+    try:
+        import ctypes
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def _under(path, roots):
+    path = os.path.normcase(os.path.abspath(path))
+    return any(r and path.startswith(os.path.normcase(os.path.join(os.path.abspath(r), ""))) for r in roots)
+
+
+def folders(here, env, is_admin):
+    """Where each kind of file goes, for code in `here` and environment `env`.
+
+    Installed by Setup, the code sits in Program Files, which only admins can change, because the lighting daemon
+    runs it as admin. Whatever a normal process writes (settings, the app's logs, its tokens and caches) then lives
+    in the user's own folder, and the daemon only reads from there. A source checkout keeps everything next to the
+    code. RGB_DATA_DIR and RGB_LOG_DIR override (the tests use them)."""
+    protected = _under(here, [env.get(v) for v in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)")])
+    data = env.get("RGB_DATA_DIR") or (
+        os.path.join(env["LOCALAPPDATA"], "RGB Anywhere") if protected and env.get("LOCALAPPDATA") else here)
+    service_logs = os.path.join(here, "logs")  # the elevated daemon's: never in a folder a normal process controls
+    user_logs = os.path.join(data, "logs")
+    logs = env.get("RGB_LOG_DIR") or (service_logs if is_admin or not protected else user_logs)
+    events = [os.path.join(logs, "events.jsonl")] if env.get("RGB_LOG_DIR") else sorted(
+        {os.path.join(d, "events.jsonl") for d in (user_logs, service_logs)})
+    return {"protected": protected, "data": data, "service_logs": service_logs, "user_logs": user_logs, "logs": logs,
+            "events": events}
+
+
+IS_ADMIN = _is_admin()
+_F = folders(HERE, os.environ, IS_ADMIN)
+PROTECTED, DATA_DIR, LOG_DIR = _F["protected"], _F["data"], _F["logs"]
+SERVICE_LOG_DIR, USER_LOG_DIR = _F["service_logs"], _F["user_logs"]
+EVENT_FILES = _F["events"]  # both processes' event files, for the app's summary and the debug report
 FAILED_DIR = os.path.join(LOG_DIR, "failed")
 EVENTS = os.path.join(LOG_DIR, "events.jsonl")
 SESSION = secrets.token_hex(3)          # tells one run of the app apart from the next in the logs
@@ -201,13 +240,15 @@ def _read_tail(path, max_bytes=256 * 1024):
 
 
 def recent_events(n=15):
+    """The newest `n` events of the app and the lighting daemon together, oldest first."""
     out = []
-    for line in _read_tail(EVENTS)[-n:]:
-        try:
-            out.append(json.loads(line))
-        except ValueError:
-            pass
-    return out
+    for path in EVENT_FILES:
+        for line in _read_tail(path)[-n:]:
+            try:
+                out.append(json.loads(line))
+            except ValueError:
+                pass
+    return sorted(out, key=lambda r: str(r.get("t", "")))[-n:]
 
 
 def summary(hours=24):
@@ -250,12 +291,20 @@ def build_report(diagnosis=None):
     os.makedirs(LOG_DIR, exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out = os.path.join(LOG_DIR, "debug-report-%s.zip" % stamp)
-    state_path = os.path.join(HERE, "state.json")
+    state_path = os.path.join(DATA_DIR, "state.json")
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
         for name in sorted(os.listdir(LOG_DIR)):
             p = os.path.join(LOG_DIR, name)
             if os.path.isfile(p) and not name.startswith("debug-report-"):
                 z.write(p, "logs/" + name)
+        if os.path.normcase(SERVICE_LOG_DIR) != os.path.normcase(LOG_DIR) and os.path.isdir(SERVICE_LOG_DIR):
+            for name in sorted(os.listdir(SERVICE_LOG_DIR)):  # the lighting daemon's, in the install folder
+                p = os.path.join(SERVICE_LOG_DIR, name)
+                if os.path.isfile(p):
+                    try:
+                        z.write(p, "service-logs/" + name)
+                    except OSError as e:
+                        z.writestr("service-logs/%s.unreadable.txt" % name, str(e))
         if os.path.isdir(FAILED_DIR):
             for name in os.listdir(FAILED_DIR):
                 z.write(os.path.join(FAILED_DIR, name), "logs/failed/" + name)

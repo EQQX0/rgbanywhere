@@ -92,6 +92,33 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(a.state["mode"], "original")
 
 
+class LegacyCleanupTest(unittest.TestCase):
+    def test_old_program_files_are_removed_and_settings_kept(self):
+        with tempfile.TemporaryDirectory() as data:
+            for d in ("python", "openrgb", os.path.join("cache", "core"), os.path.join("cache", "uploads"), "profiles"):
+                os.makedirs(os.path.join(data, d))
+            for f in ("rgbd.py", "rgb_app.pyw", "install.ps1", "Uninstall.exe", "rgbd.token", "config.json",
+                      "state.json", "control.token", "accent_backup.json"):
+                open(os.path.join(data, f), "w").close()
+            with mock.patch.object(m.applog, "PROTECTED", True):
+                gone = m.remove_legacy_code(data)
+            left = sorted(os.listdir(data))
+            self.assertEqual(left, ["accent_backup.json", "cache", "control.token", "profiles", "state.json"])
+            self.assertEqual(os.listdir(os.path.join(data, "cache")), ["uploads"])
+            self.assertIn("rgbd.py", gone)
+
+    def test_nothing_is_removed_from_a_source_checkout_or_a_clean_folder(self):
+        with tempfile.TemporaryDirectory() as data:
+            open(os.path.join(data, "rgbd.py"), "w").close()
+            with mock.patch.object(m.applog, "PROTECTED", False):
+                self.assertEqual(m.remove_legacy_code(data), [])
+            self.assertTrue(os.path.exists(os.path.join(data, "rgbd.py")))
+            os.remove(os.path.join(data, "rgbd.py"))
+            open(os.path.join(data, "state.json"), "w").close()
+            with mock.patch.object(m.applog, "PROTECTED", True):
+                self.assertEqual(m.remove_legacy_code(data), [])  # no rgbd.py: not an old install
+
+
 class ScreenTest(unittest.TestCase):
     def test_two_callers_cannot_both_start_a_screen_job(self):
         class Slow(m.App):

@@ -283,6 +283,12 @@ def hints(d):
                    "by its own controller or vendor app." % ", ".join(skipped))
     if d["devices"] is not None and not devs and not core.get("start_error"):
         out.append("No device was found at all. OpenRGB's log lists each detector it tried.")
+    elif devs and not any(x["group"] == "fans" for x in devs):
+        # Seen on a Biostar H610MH: its spec lists no RGB header at all, and its fans glowed white from their own hub.
+        out.append("No motherboard, fan hub, cooler or LED strip lighting was found, so fans can't be set from here. "
+                   "Usually the motherboard has no RGB/ARGB header (check its spec sheet for one), or the fans run from "
+                   "a hub with its own button or remote, or they are single-colour fans. Software can only set fans "
+                   "whose RGB cable reaches a header or USB controller that OpenRGB supports.")
     for x in devs:
         kinds = {m["name"]: m["colors"] for m in x["modes"]}
         if kinds.get(x["active_mode"]) in ("none", "random"):

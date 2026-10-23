@@ -1,5 +1,6 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-# Removes RGB Anywhere: scheduled tasks, startup entry, shortcuts, the Settings > Apps entry and the install folder.
+# Removes RGB Anywhere: scheduled tasks, startup entry, shortcuts, the Settings > Apps entry, the install folder and the
+# user's settings folder (%LOCALAPPDATA%\RGB Anywhere).
 # Run by Uninstall.exe (elevated, hidden). The PawnIO driver is left alone because other programs can use it.
 param([Parameter(Mandatory)][string]$Dir)
 $ErrorActionPreference = 'Continue'
@@ -27,6 +28,11 @@ Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 
 Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RGB Anywhere' -Recurse -ErrorAction SilentlyContinue
 Remove-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'RGB Anywhere.lnk') -ErrorAction SilentlyContinue
 Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'RGB Anywhere.lnk') -ErrorAction SilentlyContinue
+
+# The settings, the app's logs and its tokens, in the user's folder when the code is in Program Files. rmdir removes a
+# junction itself instead of what it points to, so a folder planted there can't make this delete anything else.
+$data = Join-Path $env:LOCALAPPDATA 'RGB Anywhere'
+if ($data -ne $Dir -and (Test-Path -LiteralPath $data)) { & cmd.exe /c "rmdir /s /q `"$data`"" }
 
 # Uninstall.exe is still running, so delete the folder a moment after it exits.
 Start-Process cmd.exe -WindowStyle Hidden -ArgumentList "/c ping -n 4 127.0.0.1 >nul & rmdir /s /q `"$Dir`""
