@@ -60,7 +60,6 @@ UI = os.path.join(HERE, "ui", "index.html")
 ICON = os.path.join(HERE, "rgb.ico")
 CACHE = os.path.join(HERE, "cache")
 ACCENT_BACKUP = os.path.join(HERE, "accent_backup.json")  # the user's Windows accent before we synced it
-NIRCMD = os.path.join(HERE, "nircmd.exe")  # NirSoft's NirCmd: turns the monitors off
 PROFILES = os.path.join(HERE, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
 NO_WINDOW = 0x08000000
 PREFERRED_MONITOR = rgb.CFG.get("preferred_monitor")  # config.json: open on the monitor whose hardware ID contains this (e.g. "MSI"); None = leave the window where Windows puts it
@@ -1222,21 +1221,18 @@ class App:
 
     # ----- monitors -----
     def monitors_off(self, wake_lights=False):
-        """Turn every monitor off with NirCmd. Windows wakes them at the next keyboard or mouse input.
+        """Turn every monitor off through the Windows API. Windows wakes them at the next keyboard or mouse input.
         wake_lights: the lights went off with them, so that same input switches the lights back on (see wake_watch)."""
         def go():
             err = None
-            if not os.path.exists(NIRCMD):
-                err = "nircmd.exe is missing from the RGB folder"
-            else:
-                try:
-                    # Wait a moment first: the click that asked for it, or a nudge of the mouse right after, would wake them again.
-                    r = subprocess.run([NIRCMD, "cmdwait", "1500", "monitor", "off"], capture_output=True, text=True,
-                                       errors="ignore", creationflags=NO_WINDOW, timeout=15)
-                    if r.returncode:
-                        err = "nircmd exited with %s %s" % (r.returncode, (r.stdout + r.stderr).strip()[:150])
-                except (OSError, subprocess.SubprocessError) as e:
-                    err = "%s: %s" % (type(e).__name__, e)
+            try:
+                # Wait a moment first: the click that asked for it, or a nudge of the mouse right after, would wake them again.
+                time.sleep(1.5)
+                # HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2 = off. SendNotifyMessage can't hang on a stuck window.
+                if not ctypes.windll.user32.SendNotifyMessageW(0xFFFF, 0x0112, 0xF170, 2):
+                    err = "SendNotifyMessage failed (error %s)" % ctypes.GetLastError()
+            except (OSError, AttributeError) as e:
+                err = "%s: %s" % (type(e).__name__, e)
             applog.event("monitors_off", ok=err is None, error=err)
             if err:
                 log.error("couldn't turn the monitors off: %s", err)

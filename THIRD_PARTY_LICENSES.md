@@ -50,7 +50,6 @@ Code compiled into `rgbcore.dll` from `third_party/openrgb/`: nlohmann/json (MIT
 
 ## Not redistributed
 
-- `nircmd.exe` (freeware, NirSoft) is optional and is not in this repository.
 - DeepCool and Corsair software are separate products that the app can work alongside. Nothing from them is included.
 
 ## Open points

@@ -112,7 +112,7 @@ Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. The device cor
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
 
-The cooler screen feature needs a DeepCool LT-series cooler with the DeepCool app installed. `nircmd.exe` is optional and not included.
+The cooler screen feature needs a DeepCool LT-series cooler with the DeepCool app installed.
 
 ## Security notes
 
