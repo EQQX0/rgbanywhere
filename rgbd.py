@@ -147,7 +147,7 @@ class Handler(socketserver.StreamRequestHandler):
             elif cmd == "rescan":
                 _rescan(); res = None
             elif cmd == "restore":  # the saved copy lives with the daemon, so a client never sends one
-                res = _need_core().restore(rgb.load_originals())
+                res = _need_core().restore(rgb.restorable()[0])
             elif cmd == "busy":  # a start, rescan or re-apply is running (the app waits for a rescan to end)
                 res = _busy.locked()
             else:

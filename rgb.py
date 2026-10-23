@@ -352,17 +352,36 @@ def remember_originals(backend):
         return 0
 
 
+def readable(saved):
+    """Whether a saved device holds lighting OpenRGB really read. Most controllers can't be read back: OpenRGB then
+    reports a colour mode (Direct, Static) or Off with every colour black, and restoring that would switch the lights
+    off. Effect modes that take no colour (Rainbow) are real readings."""
+    takes_colour = saved.get("color_mode") in (1, 2)  # ModeColors PER_LED, MODE_SPECIFIC
+    black = not any(saved.get("leds") or []) and not any(saved.get("mode_colors") or [])
+    return not (black and (takes_colour or str(saved.get("mode", "")).lower() == "off"))
+
+
+def restorable():
+    """The saved devices worth restoring, and the names of those whose original lighting could not be read."""
+    saved = load_originals()
+    return [s for s in saved if readable(s)], [s.get("name", "?") for s in saved if not readable(s)]
+
+
 def restore(client, log=print):
-    """Put every saved device back the way it was before RGB Anywhere (state mode "original"). Returns failures."""
-    res = client.restore(load_originals())
-    _log.info("restore: %d restored, missing %s, failed %s", len(res["restored"]), res["missing"] or "none",
-              res["failed"] or "none")
+    """Put every saved device back the way it was before RGB Anywhere (state mode "original"), where OpenRGB could read
+    it; the others are left as they are. Returns failures."""
+    ok, unknown = restorable()
+    res = client.restore(ok)
+    _log.info("restore: %d restored, missing %s, failed %s, not readable (left as they are) %s", len(res["restored"]),
+              res["missing"] or "none", res["failed"] or "none", unknown or "none")
+    for name in unknown:
+        log("keep %s (its original lighting could not be read)" % name)
     for name in res["restored"]:
         log("ok   " + name)
     for name in res["failed"]:
         log("fail %s (could not restore)" % name)
     applog.event("lights_restore", ok=not res["failed"], restored=len(res["restored"]), missing=res["missing"],
-                 failed=res["failed"])
+                 failed=res["failed"], unreadable=unknown)
     return len(res["failed"])
 
 

@@ -79,7 +79,7 @@ The first time RGB Anywhere finds a device, before it changes anything, it saves
 
 To go back, press **Original** in the app, or run `rgbctl original` (or `python rgb.py original`). Pick any color to take over again. Uninstalling restores it too, before the app is removed.
 
-Limits: many devices can't report their real colors, and OpenRGB then reads back its defaults. Lighting stored in Razer Synapse, iCUE or another vendor app often lives in that app, not on the device, so restoring puts the device back in the mode it had and the vendor app reapplies its own profile when it runs. Devices you used with RGB Anywhere before this feature existed were saved with RGB Anywhere's colors, because those were already on them.
+Limits: most devices can't report the colors they show. OpenRGB then reads back Direct, Static or Off with every color black, and RGB Anywhere marks that device as unreadable and leaves it as it is instead of switching it off. On the PC this was tested on (Corsair DDR5, ASUS Aura board, Logitech keyboard and mouse) no device could be read. Lighting stored in Razer Synapse, iCUE, Armoury Crate or another vendor app lives in that app, so for those devices open the vendor app after uninstalling and it applies its own profile again. Devices you used with RGB Anywhere before this feature existed were saved with RGB Anywhere's colors, because those were already on them.
 
 ## config.json
 

@@ -1224,7 +1224,7 @@ $("bright").addEventListener("change", () => { if (!isOff()) toast(`Brightness $
 $("rescan").onclick = () => { api.rescan(); toast("Rescanning devices…", { kind: "info", key: "rescan" }); };
 $("original").onclick = () => {
   S.mode = "original"; render(); api.set_mode("original");
-  toast("Original lighting back. Pick a color to take over again.", { kind: "info", key: "power" });
+  toast("Original lighting back where it could be read; other devices keep their colors. Pick a color to take over again.", { kind: "info", key: "power" });
 };
 $("accentSw").onclick = () => {
   S.sync_accent = S.sync_accent === false; render(); api.set_sync_accent(S.sync_accent);

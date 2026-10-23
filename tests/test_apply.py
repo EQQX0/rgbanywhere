@@ -104,6 +104,19 @@ class Through:
             self.assertEqual(rgb.remember_originals(self.backend), 1)
             self.assertEqual([s["name"] for s in rgb.load_originals()][-1], "Late Mouse")
 
+    def test_a_blank_reading_is_never_restored(self):
+        """Most controllers can't be read back: OpenRGB reports Direct or Off with every colour black. Restoring that
+        switched the lights off on a real PC, so such devices are left as they are."""
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            rgb.remember_originals(self.backend)  # the stub's devices start black, as OpenRGB reports unreadable ones
+            ok, unknown = rgb.restorable()
+            self.assertIn("Keyboard", unknown)
+            self.assertIn("Fan", [s["name"] for s in ok])  # Rainbow takes no colour: a real reading
+            self.assertEqual(self.apply(color="00FF00"), 0)
+            self.assertEqual(self.apply(mode="original"), 0)
+        self.assertEqual(colours(self.srv.devices[1]), [(0, 255, 0)] * 4)  # kept, not blacked out
+
     def test_restore_without_a_saved_copy_changes_nothing(self):
         with mock.patch.object(rgb, "ORIGINAL", os.path.join(self.tmp.name, "none.json")):
             self.assertEqual(self.apply(mode="original"), 0)
