@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-"""Logging and diagnostics for RGB Control. Everything lands in C:\\Users\\Admin\\RGB\\logs\\ :
+"""Logging and diagnostics for RGB Anywhere. Everything lands in C:\\Users\\Admin\\RGB\\logs\\ :
 
   rgb.log          everything (debug and up), rotating, 3 MB x 5
   errors.log       warnings and errors only, with stack traces, rotating
@@ -122,7 +122,7 @@ def setup(role="app"):
               where="thread " + (args.thread.name if args.thread else "?"))
     threading.excepthook = thread_hook
 
-    log.info("=== RGB Control %s started: pid=%d session=%s python=%s %s", role, os.getpid(), SESSION,
+    log.info("=== RGB Anywhere %s started: pid=%d session=%s python=%s %s", role, os.getpid(), SESSION,
              platform.python_version(), platform.platform())
     log.info("argv=%s", sys.argv)
 
@@ -275,7 +275,7 @@ def build_report(diagnosis=None):
             z.writestr("settings.json", json.dumps(state, indent=2, ensure_ascii=False))
         except Exception as e:
             z.writestr("settings.json", "unreadable: %s" % e)
-        info = ["RGB Control debug report", "made: " + datetime.datetime.now().isoformat(timespec="seconds"),
+        info = ["RGB Anywhere debug report", "made: " + datetime.datetime.now().isoformat(timespec="seconds"),
                 "session: " + SESSION, "os: " + platform.platform(), "machine: " + platform.machine(),
                 "python: " + sys.version, ""] + _versions()
         try:

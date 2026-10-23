@@ -41,7 +41,6 @@ These change lights or processes:
 2. The OpenRGB zip could not be downloaded here (codeberg.org blocked), so its layout, hash and the licenses of PawnIOLib, hidapi, libusb and Qt inside it are unchecked.
 3. License decision: pillow-heif's Windows wheels are GPLv2 by their own notice (x265). The release zip ships them next to a GPL-3.0-or-later app. Drop HEIC support, find another build, or accept.
 4. Design decision: OpenRGB 1.0 accepts an SDK rescan request (packet 140, `NetworkServer.cpp` at 81bbe18) from any client. Rescan could re-detect without restarting OpenRGB. The restart was kept because it also clears a stuck OpenRGB; say if you want the packet tried first.
-5. Naming: the app calls itself "RGB Control" (window, tray, Android app, firewall rule, README title) while Setup, tasks and folder say "RGB Anywhere". Left alone.
 6. Check on a non-English Windows that `sc query PawnIO` still shows the state as a number and an English word (for example "4  RUNNING"); commit 8b446d9 relies on that and it was only checked against the English layout.
 7. openrgb-python 0.3.8 supports SDK protocol 4 at most; OpenRGB 1.0 speaks 6. A newer client library may remove the workarounds; not evaluated.
 

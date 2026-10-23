@@ -1,4 +1,4 @@
-"""RGB Control: lighting (RAM, fans, keyboard, mouse via the bundled OpenRGB) and the DeepCool cooler screen.
+"""RGB Anywhere: lighting (RAM, fans, keyboard, mouse via the bundled OpenRGB) and the DeepCool cooler screen.
 
 UI is ui/index.html in a WebView2 window (pywebview). A tiny localhost server serves the page and a
 cached copy of whatever the cooler is playing, so the preview never locks DeepCool's file.
@@ -54,7 +54,7 @@ from PIL import Image  # noqa: E402
 from webview.dom import DOMEventHandler  # noqa: E402
 
 APP_ID = "Admin.RGBControl"  # taskbar identity; matches the Start menu shortcut
-TITLE = "RGB Control"
+TITLE = "RGB Anywhere"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
 ICON = os.path.join(HERE, "rgb.ico")
@@ -70,7 +70,7 @@ CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 12
 CONTROL_TOKEN = os.path.join(HERE, "control.token")
 CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
                    "rescan", "set_sync_accent"}
-FW_RULE = "RGB Control Phone"
+FW_RULE = "RGB Anywhere Phone"
 # What a phone may call. Deliberately excludes desktop-only things (file dialog, calibration test mode).
 PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "save_preset",
                  "update_preset", "delete_preset", "restore_preset", "restore_screen", "rescan", "set_sync_accent",
@@ -290,7 +290,7 @@ class PhoneHandler(Handler):
             applog.event("phone_denied", ok=False, ip=ip, path=applog.redact(self.path), error=why)
         body = (b"<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
                 b"<body style='font:16px system-ui;background:#0d0d11;color:#ddd;padding:32px'>"
-                b"<h2>RGB Control</h2><p>Open the link from the QR code in RGB Control on your PC "
+                b"<h2>RGB Anywhere</h2><p>Open the link from the QR code in RGB Anywhere on your PC "
                 b"(Phone button).</p>")
         self.send_response(401)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -1494,7 +1494,7 @@ class App:
             return lambda icon, item: self.apply_preset(p)
 
         def items():  # rebuilt on update_menu(), so it follows preset edits
-            yield pystray.MenuItem("Open RGB Control", lambda i, it: self.show(), default=True)
+            yield pystray.MenuItem("Open RGB Anywhere", lambda i, it: self.show(), default=True)
             yield pystray.Menu.SEPARATOR
             for p in self.presets:
                 yield pystray.MenuItem(p["name"], preset(p))
@@ -1650,7 +1650,7 @@ def single_instance():
     except OSError:
         try:
             socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=2).close()
-            log.info("another RGB Control is already running; asked it to show its window")
+            log.info("another RGB Anywhere is already running; asked it to show its window")
         except OSError as e:
             log.warning("port %d is busy but nothing answered there (%s); not starting a second copy", SINGLE_PORT, e)
         return None
@@ -1721,7 +1721,7 @@ def main():
         applog.event("webview", ok=False, error=applog.format_exc().strip().splitlines()[-1])
         raise
     finally:
-        log.info("=== RGB Control exiting (session %s) ===", applog.SESSION)
+        log.info("=== RGB Anywhere exiting (session %s) ===", applog.SESSION)
 
 
 if __name__ == "__main__":

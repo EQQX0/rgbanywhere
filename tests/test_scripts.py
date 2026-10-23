@@ -38,7 +38,7 @@ class ScriptsParseTest(unittest.TestCase):
             parser = os.path.join(tmp, "parse.ps1")
             with open(parser, "w", encoding="utf-8") as f:
                 f.write(PARSE)
-            r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-File", parser, *files],
+            r = subprocess.run([PWSH, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", parser, *files],
                                capture_output=True, text=True, timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr)
         errors = {os.path.basename(f): e for f, e in json.loads(r.stdout).items() if e}

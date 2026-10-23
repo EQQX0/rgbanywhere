@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-# RGB Control installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
+# RGB Anywhere installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
 # Installs Python packages, fetches the bundled OpenRGB if needed, then sets up the login tasks, the startup entry and the Start menu shortcut.
 # Asks for admin once (the lighting daemon needs it to reach RAM lights and some boards).
 #   -NoStartup  do not start the app at login

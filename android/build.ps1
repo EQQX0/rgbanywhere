@@ -17,7 +17,7 @@ New-Item -ItemType Directory -Force "$b\classes", "$b\dex" | Out-Null
 # one-time signing key (kept so future builds can update an installed app)
 if (-not (Test-Path $ks)) {
     & "$jbin\keytool.exe" -genkeypair -keystore $ks -storepass $kspass -keypass $kspass -alias rgb `
-        -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=RGB Control" | Out-Null
+        -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=RGB Anywhere" | Out-Null
 }
 
 & "$bt\aapt2.exe" compile --dir "$root\app\res" -o "$b\res.zip"

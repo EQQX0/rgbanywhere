@@ -40,7 +40,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * RGB Control for Android: a thin native shell around the control page your PC serves on the home network.
+ * RGB Anywhere for Android: a thin native shell around the control page your PC serves on the home network.
  * Pairing comes from the PC's QR code; the PC is found again by itself if its address changes.
  */
 public class MainActivity extends Activity {
@@ -269,8 +269,8 @@ public class MainActivity extends Activity {
     void showSetup(String note) {
         offlineView.setVisibility(View.GONE);
         setupNote.setText(note != null ? note :
-            "On your PC, open RGB Control, click Phone, and scan the QR code with your phone's camera. "
-            + "When asked how to open the link, choose RGB Control.\n\nOr paste the link here:");
+            "On your PC, open RGB Anywhere, click Phone, and scan the QR code with your phone's camera. "
+            + "When asked how to open the link, choose RGB Anywhere.\n\nOr paste the link here:");
         setupView.setVisibility(View.VISIBLE);
     }
 
@@ -303,17 +303,17 @@ public class MainActivity extends Activity {
                     prefs.edit().putString("host", found).apply();
                     start();
                 } else if (found != null) {
-                    showOffline("Found your PC, but it isn't answering", "Make sure RGB Control is running on your PC.", true);
+                    showOffline("Found your PC, but it isn't answering", "Make sure RGB Anywhere is running on your PC.", true);
                 } else {
                     showOffline("Can't reach your PC",
-                        "Make sure your PC is on, RGB Control is running with \"Allow phone access\" switched on, "
+                        "Make sure your PC is on, RGB Anywhere is running with \"Allow phone access\" switched on, "
                         + "and this phone is on the same Wi-Fi.", true);
                 }
             });
         }).start();
     }
 
-    /** Returns "ip:port" of a PC running RGB Control on this /24 network, or null. */
+    /** Returns "ip:port" of a PC running RGB Anywhere on this /24 network, or null. */
     String scan() {
         String prefix = localPrefix();
         if (prefix == null) return null;

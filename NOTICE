@@ -1,4 +1,4 @@
-RGB Control
+RGB Anywhere
 Copyright (C) 2026 EQQX2
 Licensed under the GNU General Public License, version 3 or (at your option) any later version. See LICENSE.
 
@@ -7,7 +7,7 @@ The release also ships OpenRGB as a separate, unmodified program in the openrgb 
   https://openrgb.org, https://gitlab.com/CalcProgrammer1/OpenRGB
   Copyright (C) Adam Honse and the OpenRGB contributors
   Licensed under the GNU General Public License, version 2 or (at your option) any later version.
-  RGB Control starts it and talks to it over the OpenRGB network protocol. It is downloaded
+  RGB Anywhere starts it and talks to it over the OpenRGB network protocol. It is downloaded
   from the official release by fetch-openrgb.ps1 and is not part of this repository.
 
 Other components and their licenses are listed in THIRD_PARTY_LICENSES.md.

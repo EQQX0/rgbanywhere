@@ -1,6 +1,6 @@
 # Third-party licenses
 
-RGB Control as a whole is released under the GNU General Public License, version 3 or (at your option) any later version (see `LICENSE`). It ships and uses the components below. Their notices and licenses stay with them.
+RGB Anywhere as a whole is released under the GNU General Public License, version 3 or (at your option) any later version (see `LICENSE`). It ships and uses the components below. Their notices and licenses stay with them.
 
 ## OpenRGB (bundled, unmodified)
 
@@ -10,7 +10,7 @@ RGB Control as a whole is released under the GNU General Public License, version
 - Copyright: Adam Honse and the OpenRGB contributors.
 - License: GNU GPL version 2 or later. Checked on 2026-10-23 at the commit above: `LICENSE` is the GPL version 2 text and the source files carry `SPDX-License-Identifier: GPL-2.0-or-later` (for example `NetworkServer.cpp`). Some folders of the upstream tree may carry GPL-2.0-only headers; that was not re-checked.
 - How it ships: the official Windows build (`OpenRGB_1.0_Windows_64_81bbe18.zip` from https://codeberg.org/OpenRGB/OpenRGB/releases, SHA-256 `182A52A3C97C4C4AE52C80286B4260C9666C51C3447DBC416EE8945F66192E90`) is unpacked unmodified into `openrgb\`. `fetch-openrgb.ps1` downloads it, checks the hash and unpacks it. Its source is at the commit above.
-- How it is used: `rgbd.py` starts `openrgb\OpenRGB.exe` as a separate process with `--server` on 127.0.0.1:47826 and talks to it over the OpenRGB network protocol. Nothing from OpenRGB is compiled or linked into RGB Control, so the GPL-2.0-or-later program and the GPL-3.0-or-later app are separate works.
+- How it is used: `rgbd.py` starts `openrgb\OpenRGB.exe` as a separate process with `--server` on 127.0.0.1:47826 and talks to it over the OpenRGB network protocol. Nothing from OpenRGB is compiled or linked into RGB Anywhere, so the GPL-2.0-or-later program and the GPL-3.0-or-later app are separate works.
 
 ## Files inside the OpenRGB zip
 
