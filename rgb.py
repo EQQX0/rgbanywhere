@@ -395,11 +395,21 @@ def _quiet(*cmd):
     return subprocess.run(cmd, capture_output=True, text=True, errors="ignore", creationflags=0x08000000)
 
 
+SERVICE_STATES = ("STOPPED", "START_PENDING", "STOP_PENDING", "RUNNING", "CONTINUE_PENDING", "PAUSE_PENDING", "PAUSED")
+
+
 def service_state(name):
     """"RUNNING", "STOPPED", "STOP_PENDING"... or None if there is no such service."""
-    for line in _quiet("sc", "query", name).stdout.splitlines():
-        if "STATE" in line:
-            return line.split()[-1]
+    return parse_service_state(_quiet("sc", "query", name).stdout)
+
+
+def parse_service_state(text):
+    """The state from `sc query` output. Matched by its value ("4  RUNNING"), not its label, which some Windows
+    languages translate."""
+    for line in text.splitlines():
+        words = line.replace(":", " ").split()
+        if len(words) >= 2 and words[-1] in SERVICE_STATES and words[-2].isdigit():
+            return words[-1]
     return None
 
 

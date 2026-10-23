@@ -236,6 +236,23 @@ class CommandLineTest(unittest.TestCase):
                 self.run_cli(*argv)
 
 
+class ServiceStateTest(unittest.TestCase):
+    ENGLISH = """
+SERVICE_NAME: PawnIO
+        TYPE               : 1  KERNEL_DRIVER
+        STATE              : 4  RUNNING
+        WIN32_EXIT_CODE    : 0  (0x0)
+"""
+
+    def test_parse(self):
+        self.assertEqual(rgb.parse_service_state(self.ENGLISH), "RUNNING")
+        translated = self.ENGLISH.replace("STATE   ", "ZUSTAND ").replace("4  RUNNING", "1  STOPPED")
+        self.assertEqual(rgb.parse_service_state(translated), "STOPPED")
+        self.assertIsNone(rgb.parse_service_state("[SC] EnumQueryServicesStatus:OpenService FAILED 1060:\n\n"
+                                                  "The specified service does not exist as an installed service.\n"))
+        self.assertIsNone(rgb.parse_service_state(""))
+
+
 class RulesTest(unittest.TestCase):
     def dev(self, *names):
         return rc.Device(None, {"index": 0, "name": "D", "type": 0, "led_count": 1, "modes": list(names), "zones": []})
