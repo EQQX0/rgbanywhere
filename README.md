@@ -27,7 +27,7 @@ OpenRGB probes many buses, including SMBus on the motherboard. Close OpenRGB and
 
 ## Download
 
-Download `RGB-Anywhere-Setup.exe` from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup downloads the app (about 75 MB), checks its SHA-256, unpacks it to `%LOCALAPPDATA%\RGB Anywhere` and runs the installer, which asks for admin once. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
+Download `RGB-Anywhere-Setup.exe` (about 87 MB) from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The app is inside the file, so Setup needs no further download. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup checks the files against their SHA-256, unpacks them to `%LOCALAPPDATA%\RGB Anywhere` and runs the installer, which asks for admin once. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
 
 To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. (This update path is new and has not been tried on a real PC yet.)
 
@@ -37,7 +37,7 @@ The app has its own Python, so nothing else needs installing. RAM and some board
 
 Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd`. The `.sha256` file next to it holds the checksum.
 
-Nothing is signed, so Windows SmartScreen may warn you. The checksum is downloaded from the same release as the zip, so it catches a damaged download but not a tampered release. The zip is built on one PC by `package.ps1`; the Setup exe is built from `installer/setup.cpp` by `installer/build.ps1`.
+Nothing is signed, so Windows SmartScreen may warn you. The checksum is downloaded from the same release as the zip, so it catches a damaged download but not a tampered release. The zip is built on one PC by `package.ps1`; `package.ps1` also builds the Setup exe from `installer/setup.cpp` and appends the zip to it (`installer/bundle.ps1`). A plain `installer/build.ps1` build has no zip inside and downloads the latest release instead.
 
 ## Build and install from source
 
