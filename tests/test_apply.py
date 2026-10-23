@@ -128,6 +128,17 @@ class DaemonTest(Through, Setup):
         self.remote = rc.RemoteBackend(port=self.daemon.server_address[1], timeout=20)
         self.client = rc.Client(self.remote)
 
+    def test_silent_or_oversized_requests_are_dropped(self):
+        import socket
+        port = self.daemon.server_address[1]
+        with mock.patch.object(rgbd.Handler, "timeout", 0.5), socket.create_connection(("127.0.0.1", port)) as s:
+            s.settimeout(5)
+            self.assertIn(b"timed out", s.recv(100))  # answered and closed once the timeout passed
+        with mock.patch.object(rgbd.Handler, "MAX_LINE", 100), socket.create_connection(("127.0.0.1", port)) as s:
+            s.sendall(b"x" * 500 + b"\n")
+            s.settimeout(5)
+            self.assertIn(b"request too long", s.recv(1000))
+
     def test_busy(self):
         self.assertIs(self.remote.request("busy"), False)
         with rgbd._busy:

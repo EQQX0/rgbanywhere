@@ -117,9 +117,15 @@ def _need_core():
 
 
 class Handler(socketserver.StreamRequestHandler):
+    timeout = 30  # seconds to send the request line; a client that connects and says nothing must not keep a thread
+    MAX_LINE = 1 << 20
+
     def handle(self):
         try:
-            req = json.loads(self.rfile.readline().decode("utf-8"))
+            line = self.rfile.readline(self.MAX_LINE + 1)
+            if len(line) > self.MAX_LINE:
+                raise ValueError("request too long")
+            req = json.loads(line.decode("utf-8"))
             if not hmac.compare_digest(str(req.get("token", "")), _token):
                 raise PermissionError("bad token")
             cmd = req["cmd"]
