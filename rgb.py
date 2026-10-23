@@ -456,35 +456,33 @@ def _main():
     unknown = [a for a in args if a.startswith("--") and a != "--restart"]
     if unknown:
         sys.exit("unknown option %s. See the usage at the top of rgb.py." % " ".join(unknown))
+    if "--restart" in args:  # re-detect devices (the daemon stops/starts the cooler helper around it)
+        args.remove("--restart")
+        applog.event("core_rescan", ok=True, source="cli")
+        connect().rescan()
+    groups = [a for a in args if "=" in a]
+    rest = [a for a in args if "=" not in a]
+    if rest:
+        state["color"] = to_hex(rest[0])
+        state["mode"] = " ".join(rest[1:]).lower() or "static"
+        state["groups"] = {}  # new overall color resets per-device colors
+    for g in groups:
+        name, val = g.split("=", 1)
+        name = name.lower()
+        if name == "brightness":
+            state["brightness"] = max(0, min(100, int(val)))
+        elif name in GROUPS:
+            state.setdefault("groups", {})[name] = to_hex(val)
+        else:
+            sys.exit("unknown group %r (use %s or brightness)" % (name, ", ".join(GROUPS)))
+
     try:
-        if "--restart" in args:  # re-detect devices (the daemon stops/starts the cooler helper around it)
-            args.remove("--restart")
-            applog.event("core_rescan", ok=True, source="cli")
-            connect().rescan()
-        groups = [a for a in args if "=" in a]
-        rest = [a for a in args if "=" not in a]
-        if rest:
-            state["color"] = to_hex(rest[0])
-            state["mode"] = " ".join(rest[1:]).lower() or "static"
-            state["groups"] = {}  # new overall color resets per-device colors
-        for g in groups:
-            name, val = g.split("=", 1)
-            if name.lower() == "brightness":
-                state["brightness"] = int(val)
-            else:
-                state.setdefault("groups", {})[name.lower()] = to_hex(val)
-
-        try:
-            client = connect()
-        except ConnectionError as e:
-            sys.exit(str(e))
-        time.sleep(3)  # let device detection finish
-        prepare(client)
-        apply(client, state)
-        save_state(state)
-    finally:
-        pass
-
+        client = connect()  # the daemon answers once its device detection has finished
+    except ConnectionError as e:
+        sys.exit(str(e))
+    prepare(client)
+    apply(client, state)
+    save_state(state)
 
 if __name__ == "__main__":
     main()

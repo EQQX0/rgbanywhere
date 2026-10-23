@@ -186,6 +186,26 @@ class RescanWaitTest(unittest.TestCase):
             self.assertTrue(rgbd._busy.locked())
 
 
+class CommandLineTest(unittest.TestCase):
+    def run_cli(self, *argv):
+        state = {"color": "0000FF", "mode": "static", "groups": {}, "brightness": 100}
+        saved = []
+        with mock.patch.object(rgb.sys, "argv", ["rgb.py", *argv]), mock.patch.object(rgb, "load_state", lambda: state), \
+                mock.patch.object(rgb, "connect", lambda: "client"), mock.patch.object(rgb, "prepare", lambda c: None), \
+                mock.patch.object(rgb, "apply", lambda c, s: 0), mock.patch.object(rgb, "save_state", saved.append):
+            rgb._main()
+        return saved[0]
+
+    def test_colours_groups_and_brightness(self):
+        s = self.run_cli("red", "breathing", "ram=00ff00", "brightness=150")
+        self.assertEqual((s["color"], s["mode"], s["groups"], s["brightness"]), ("FF0000", "breathing", {"ram": "00FF00"}, 100))
+
+    def test_bad_input_is_refused(self):
+        for argv in (("fan=FF0000",), ("nocolour",), ("ram=12",), ("--bogus",)):
+            with self.assertRaises((SystemExit, ValueError), msg=argv):
+                self.run_cli(*argv)
+
+
 class RulesTest(unittest.TestCase):
     def dev(self, *names):
         return rc.Device(None, {"index": 0, "name": "D", "type": 0, "led_count": 1, "modes": list(names), "zones": []})
