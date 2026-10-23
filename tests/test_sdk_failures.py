@@ -104,6 +104,21 @@ class ConnectionTest(Base):
         self.assertEqual(len(b.devices()), 3)  # openrgb-python gives up after 10 s, then the retry succeeds
         self.assertIsNotNone(b.debug()["last_error"])
 
+    def test_packets_openrgb_python_cannot_read_are_skipped(self):
+        srv = self.server()
+        b = self.backend(port=srv.port, spawn=False)
+        srv.notify(160, b"\x0a\x00\x00\x00\x01\x00\x02\x00A\x00")  # PROFILE_LIST_UPDATED, sent to every client
+        srv.notify(304, b"x" * 300)
+        srv.notify(100)  # DEVICE_LIST_UPDATED: openrgb-python handles this one itself
+        t0 = time.time()
+        self.assertEqual(len(b.devices()), 3)
+        self.assertEqual(b.set_colors(1, [0x00FF00], fill=True), 0)
+        srv.notify(160, b"\x04\x00\x00\x00")
+        self.assertEqual(b.set_colors(1, [0xFF0000], fill=True), 0)
+        self.assertLess(time.time() - t0, 3)
+        self.assertEqual(srv.connects, 1)  # no reconnect was needed
+        self.assertIsNone(b.debug()["last_error"])
+
     def test_gone_server_fails_with_a_clear_error(self):
         srv = self.server()
         b = self.backend(port=srv.port, spawn=False)

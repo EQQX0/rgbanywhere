@@ -15,6 +15,7 @@ import enum
 import json
 import os
 import socket
+import struct
 import subprocess
 import threading
 import time
@@ -165,9 +166,57 @@ PROTOCOL = 3  # SDK protocol we speak: OpenRGB 1.0 server mode never answers the
 
 def _sdk_errors():
     """What a dropped, timed-out or confused SDK connection raises inside openrgb-python."""
-    import struct
     from openrgb.utils import ControllerParsingError
     return OSError, ControllerParsingError, struct.error
+
+
+# Packet types openrgb-python 0.3.8 can read. OpenRGB 1.0 (SDK protocol 6) also sends a few newer notifications to
+# every client whatever protocol it asked for: PROFILE_LIST_UPDATED (160), when a profile is saved or deleted
+# (NetworkServer::SignalProfileListUpdated at 81bbe18).
+KNOWN_PACKETS = {0, 1, 40, 100, 150, 200, 201}
+MAX_PACKET = 8 * 1024 * 1024  # OPENRGB_SDK_MAX_PACKET_SIZE
+
+
+def _drop_unknown_packets(comms):
+    """Make openrgb-python skip packets it cannot read. On one of those its read() leaves the packet's data in the
+    socket and keeps its lock, so the next request waits 10 s and later replies are misread."""
+    from openrgb.utils import OpenRGBDisconnected
+    read = comms.read
+
+    def recv(sock, n, flags=0):
+        try:
+            return sock.recv(n, flags)
+        except socket.timeout:
+            comms.stop_connection()
+            raise OpenRGBDisconnected("no answer from OpenRGB")
+
+    def tolerant():
+        sock = comms.sock
+        while sock is not None:
+            head = recv(sock, 16, socket.MSG_PEEK)
+            for _ in range(100):  # a header that arrives in pieces
+                if len(head) in (0, 16):
+                    break
+                time.sleep(0.01)
+                head = recv(sock, 16, socket.MSG_PEEK)
+            if len(head) < 16 or head[:4] != b"ORGB":
+                break  # closed, or not a header: read() reports it
+            ptype, size = struct.unpack("II", head[8:16])
+            if ptype in KNOWN_PACKETS:
+                break
+            if size > MAX_PACKET:
+                comms.stop_connection()
+                raise OpenRGBDisconnected("unreadable SDK packet %d of %d bytes" % (ptype, size))
+            _log.debug("skipping SDK packet %d (%d bytes) that openrgb-python cannot read", ptype, size)
+            left = 16 + size
+            while left:
+                got = recv(sock, min(left, 65536))
+                if not got:
+                    comms.stop_connection()
+                    raise OpenRGBDisconnected("connection closed in the middle of a packet")
+                left -= len(got)
+        return read()
+    comms.read = tolerant
 
 
 def _unchecked(m):
@@ -358,6 +407,7 @@ class SdkBackend:
                     # openrgb-python sends each request's header and body separately; without this every request
                     # waits for the server's delayed ACK (40 ms on Linux; Windows may delay ACKs up to 200 ms)
                     cli.comms.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    _drop_unknown_packets(cli.comms)
                     self._cli = cli
                     return
                 # openrgb-python waits 1 s for the version answer and otherwise falls back to protocol 0, which
@@ -619,7 +669,7 @@ class SdkBackend:
             if not isinstance(zone, int) or isinstance(zone, bool) or not 0 <= zone < len(d.zones):
                 raise ValueError("no zone %r on %s (it has %d)" % (zone, d.name, len(d.zones)))
             zd = d.data.zones[zone]
-            # OpenRGB ignores a size outside the zone's range without saying so
+            # OpenRGB 1.0 applies any size without checking the zone's range (RGBController::ResizeZone at 81bbe18)
             if not zd.leds_min <= n <= zd.leds_max:
                 raise ValueError("%s / %s takes %d to %d LEDs, not %d" % (d.name, zd.name, zd.leds_min, zd.leds_max, n))
             d.zones[zone].resize(n)

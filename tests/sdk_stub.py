@@ -79,10 +79,8 @@ def pack_device(d):
 
 
 def resize(dev, zi, n):
-    """What OpenRGB does on a resize: the zone, and so the device, gets n LEDs (ignored outside leds_min..leds_max)."""
+    """What OpenRGB 1.0 does on a resize: the zone, and so the device, gets n LEDs. It does not check the range."""
     z = dev.zones[zi]
-    if not z.leds_min <= n <= z.leds_max:
-        return
     z.num_leds = n
     z.leds = [u.LEDData("%s %d" % (z.name, i), i) for i in range(n)]
     z.colors = [BLACK] * n
@@ -180,6 +178,12 @@ class Server(socketserver.ThreadingTCPServer):
             self.fail.discard(what)
             return True
         return False
+
+    def notify(self, ptype, payload=b""):
+        """Send every client a packet it did not ask for, as OpenRGB does for list changes."""
+        with self.guard:
+            for c in list(self.conns):
+                c.sendall(struct.pack("ccccIII", b"O", b"R", b"G", b"B", 0, ptype, len(payload)) + payload)
 
     def drop_all(self):
         """Close every client connection, as OpenRGB does when it exits."""

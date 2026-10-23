@@ -57,7 +57,7 @@ def _argb_leds(value, default=60):
     return default
 
 
-ARGB_LEDS = _argb_leds(CFG.get("argb_leds", 60))  # LEDs to give each empty ARGB header; OpenRGB forgets sizes on restart
+ARGB_LEDS = _argb_leds(CFG.get("argb_leds", 60))  # LEDs to give each empty ARGB header (prepare() checks after every start)
 HELPER_SERVICE = CFG.get("helper_service")  # a sensor service that disturbs OpenRGB's RAM detection; stopped during rescans
 RAM_EXPECTED = CFG.get("ram_expected")      # sticks that should be found; None = don't check
 RAM_SAME_MODEL = bool(CFG.get("ram_same_model", False))  # flag sticks detected as different models (a misread on matched kits)
@@ -218,7 +218,7 @@ def is_elevated():
 
 def argb_size(zone):
     """LEDs to give `zone` if it is an empty addressable header, else None. ARGB_LEDS is kept within the zone's range:
-    OpenRGB ignores a size outside it without saying so."""
+    OpenRGB 1.0 does not check the range itself, and a controller may not cope with more LEDs than leds_max."""
     if zone.leds_max is None:  # a daemon that does not report the range: the old rule
         return ARGB_LEDS if zone.type.name == "LINEAR" and len(zone.leds) < 2 else None
     if zone.leds_min >= zone.leds_max or len(zone.leds) >= 2:  # fixed LEDs, or already sized
