@@ -54,3 +54,6 @@ $latest = Join-Path $dist 'RGBAnywhere-win64.zip'
 Copy-Item $zip $latest -Force
 (Get-FileHash $latest -Algorithm SHA256).Hash.ToLower() + "  RGBAnywhere-win64.zip" | Set-Content "$latest.sha256" -Encoding ascii
 Write-Host "Built $zip ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"
+# 4. Setup exe with the zip inside, so installing needs no download (works while the repo is private)
+& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'installer\bundle.ps1') -Zip $zip -Out (Join-Path $dist 'RGB-Anywhere-Setup.exe')
+if ($LASTEXITCODE) { throw 'installer\bundle.ps1 failed' }

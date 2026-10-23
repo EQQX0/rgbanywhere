@@ -1,5 +1,6 @@
-// RGB Anywhere Setup: a small installer window. It downloads the latest release zip, checks its SHA-256,
-// unpacks it to %LOCALAPPDATA%\RGB Anywhere and runs install.ps1 elevated (Windows shows its permission
+// RGB Anywhere Setup: a small installer window. The release build carries the app zip inside the exe (see
+// installerundle.ps1); a plain build downloads the latest release zip instead. Either way it checks the zip's
+// SHA-256, unpacks it to %LOCALAPPDATA%\RGB Anywhere and runs install.ps1 elevated (Windows shows its permission
 // prompt at that point). No console window.
 //
 //   RGB-Anywhere-Setup.exe          normal use
@@ -24,6 +25,7 @@
 #include <shellapi.h>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 #include <cwchar>
 #include <string>
 #include <vector>
@@ -140,6 +142,65 @@ static DWORD run_hidden(const std::wstring &cmd, const std::wstring &dir)
     return code;
 }
 
+// The zip can ride inside this exe: [stub exe][zip][64 hex chars of its SHA-256][zip size, 8 bytes LE]["RGBAPAY1"].
+struct Payload { bool found; unsigned long long off, size, total; std::string sha; };
+
+static Payload find_payload()
+{
+    Payload p = {false, 0, 0, 0, ""};
+    wchar_t self[MAX_PATH];
+    GetModuleFileNameW(NULL, self, MAX_PATH);
+    FILE *f = _wfopen(self, L"rb");
+    if (!f) return p;
+    _fseeki64(f, 0, SEEK_END);
+    long long total = _ftelli64(f);
+    char t[80];
+    if (total > 80 && _fseeki64(f, total - 80, SEEK_SET) == 0 && fread(t, 1, 80, f) == 80 && memcmp(t + 72, "RGBAPAY1", 8) == 0) {
+        unsigned long long size = 0;
+        for (int i = 7; i >= 0; i--) size = (size << 8) | (unsigned char)t[64 + i];
+        if (size > 0 && size <= (unsigned long long)total - 80) {
+            p.found = true;
+            p.size = size;
+            p.total = (unsigned long long)total;
+            p.off = p.total - 80 - size;
+            p.sha.assign(t, 64);
+        }
+    }
+    fclose(f);
+    return p;
+}
+
+// Copies bytes [from, from + len) of src into a new file dst, reporting progress between pct `lo` and `hi`.
+static bool copy_range(const std::wstring &src, unsigned long long from, unsigned long long len, const std::wstring &dst, int lo, int hi,
+                       const wchar_t *label)
+{
+    FILE *in = _wfopen(src.c_str(), L"rb");
+    if (!in) return false;
+    FILE *out = _wfopen(dst.c_str(), L"wb");
+    if (!out) { fclose(in); return false; }
+    bool ok = _fseeki64(in, (long long)from, SEEK_SET) == 0;
+    std::vector<char> buf(1 << 20);
+    unsigned long long done = 0;
+    int last = -1;
+    while (ok && done < len && !g_cancel) {
+        size_t want = (size_t)std::min<unsigned long long>(buf.size(), len - done);
+        size_t got = fread(buf.data(), 1, want, in);
+        if (!got || fwrite(buf.data(), 1, got, out) != got) { ok = false; break; }
+        done += got;
+        int pct = (int)(done * 100 / len);
+        if (hi > lo && pct != last) {
+            last = pct;
+            post_progress(lo + (hi - lo) * pct / 100);
+            wchar_t t[128];
+            swprintf(t, 128, L"%ls  %llu of %llu MB", label, done >> 20, len >> 20);
+            post_status(t);
+        }
+    }
+    fclose(in);
+    ok = (fclose(out) == 0) && ok && done == len;
+    return ok && !g_cancel;
+}
+
 struct Options { bool desktop, startup; };
 
 // An update runs this elevated instead of unpacking first: the lighting daemon (elevated), OpenRGB and the app keep
@@ -180,35 +241,56 @@ static DWORD WINAPI worker(LPVOID p)
     GetTempPathW(MAX_PATH, tmp);
     std::wstring zip = std::wstring(tmp) + ZIPNAME;
 
-    HINTERNET net = InternetOpenW(L"RGBAnywhereSetup/1.1", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
-    if (!net) { finish(false, L"Could not start the network stack."); return 0; }
+    Payload pay = find_payload();
+    if (pay.found) {
+        // The app zip is inside this exe: no network needed.
+        wchar_t self[MAX_PATH];
+        GetModuleFileNameW(NULL, self, MAX_PATH);
+        post_status(L"Reading the installer...");
+        if (!copy_range(self, pay.off, pay.size, zip, 1, 70, L"Preparing")) {
+            DeleteFileW(zip.c_str());
+            if (g_cancel) { finish(false, L""); return 0; }
+            finish(false, L"Could not read the files inside Setup. Check that the disk is not full and run Setup again.");
+            return 0;
+        }
+        post_status(L"Checking the files...");
+        post_progress(75);
+        if (sha256_file(zip) != pay.sha) {
+            DeleteFileW(zip.c_str());
+            finish(false, L"This Setup file is damaged, so nothing was installed. Download it again.");
+            return 0;
+        }
+    } else {
+        HINTERNET net = InternetOpenW(L"RGBAnywhereSetup/1.1", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+        if (!net) { finish(false, L"Could not start the network stack."); return 0; }
 
-    post_status(L"Preparing the download...");
-    std::vector<char> sum;
-    if (!download(net, std::wstring(BASE) + ZIPNAME + L".sha256", &sum, L"", 0, 1, L"") || sum.size() < 64) {
+        post_status(L"Preparing the download...");
+        std::vector<char> sum;
+        if (!download(net, std::wstring(BASE) + ZIPNAME + L".sha256", &sum, L"", 0, 1, L"") || sum.size() < 64) {
+            InternetCloseHandle(net);
+            if (g_cancel) { finish(false, L""); return 0; }
+            finish(false, L"Could not reach GitHub. Check your internet connection and try again.");
+            return 0;
+        }
+        std::string want(sum.begin(), sum.begin() + 64);
+        for (auto &ch : want) ch = (char)tolower(ch);
+
+        if (!download(net, std::wstring(BASE) + ZIPNAME, NULL, zip, 1, 70, L"Downloading")) {
+            InternetCloseHandle(net);
+            DeleteFileW(zip.c_str());
+            if (g_cancel) { finish(false, L""); return 0; }
+            finish(false, L"The download failed. Check your internet connection and try again.");
+            return 0;
+        }
         InternetCloseHandle(net);
-        if (g_cancel) { finish(false, L""); return 0; }
-        finish(false, L"Could not reach GitHub. Check your internet connection and try again.");
-        return 0;
-    }
-    std::string want(sum.begin(), sum.begin() + 64);
-    for (auto &ch : want) ch = (char)tolower(ch);
 
-    if (!download(net, std::wstring(BASE) + ZIPNAME, NULL, zip, 1, 70, L"Downloading")) {
-        InternetCloseHandle(net);
-        DeleteFileW(zip.c_str());
-        if (g_cancel) { finish(false, L""); return 0; }
-        finish(false, L"The download failed. Check your internet connection and try again.");
-        return 0;
-    }
-    InternetCloseHandle(net);
-
-    post_status(L"Checking the download...");
-    post_progress(75);
-    if (sha256_file(zip) != want) {
-        DeleteFileW(zip.c_str());
-        finish(false, L"The downloaded file did not match its checksum, so nothing was installed. Try again in a few minutes.");
-        return 0;
+        post_status(L"Checking the download...");
+        post_progress(75);
+        if (sha256_file(zip) != want) {
+            DeleteFileW(zip.c_str());
+            finish(false, L"The downloaded file did not match its checksum, so nothing was installed. Try again in a few minutes.");
+            return 0;
+        }
     }
     if (g_cancel) { DeleteFileW(zip.c_str()); finish(false, L""); return 0; }
 
@@ -236,7 +318,8 @@ static DWORD WINAPI worker(LPVOID p)
     }
     wchar_t self[MAX_PATH];
     GetModuleFileNameW(NULL, self, MAX_PATH);   // this exe becomes the uninstaller (Settings > Apps runs it with /uninstall)
-    CopyFileW(self, (g_dest + L"\\Uninstall.exe").c_str(), FALSE);
+    if (pay.found) copy_range(self, 0, pay.off, g_dest + L"\\Uninstall.exe", 0, 0, L"");   // the stub alone, without the zip
+    else CopyFileW(self, (g_dest + L"\\Uninstall.exe").c_str(), FALSE);
     if (!env(L"RGBANYWHERE_NO_INSTALL").empty()) {
         if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
         post_progress(100);
