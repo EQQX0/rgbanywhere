@@ -15,6 +15,8 @@ import diag
 import rgb
 import rgbcore_client as rc
 
+REAL_SERVICE_EXIT_CODE = diag.service_exit_code  # Base replaces it with a stub
+
 PER_LED = u.ModeFlags.HAS_PER_LED_COLOR
 LOG = """[2026-10-23 10:00:00][Info] Starting
 [2026-10-23 10:00:01][Info] [ResourceManager] Registering I2C interface: PawnIO SMBus PIIX4 Device 1022:790B Subsystem: 1043:8877
@@ -39,7 +41,8 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         for obj, name, value in ((rgb, "service_state", lambda name: "RUNNING"), (rgb, "is_elevated", lambda: True),
-                                 (diag, "_running_conflicts", lambda own=(): []), (diag, "HERE", self.tmp.name)):
+                                 (diag, "_running_conflicts", lambda own=(): []), (diag, "HERE", self.tmp.name),
+                                 (diag, "service_exit_code", lambda name: 0), (diag, "memory_integrity", lambda: False)):
             p = mock.patch.object(obj, name, value)
             p.start()
             self.addCleanup(p.stop)
@@ -143,6 +146,38 @@ class LocalTest(Base):
         self.assertIn("schtasks /run /tn \"RGB Anywhere Lighting\"", d["hints"][0])
         self.assertIn("PawnIO driver is not installed", " ".join(d["hints"]))
         self.assertFalse(any("admin" in h for h in d["hints"]))  # unknown from here, so not claimed
+
+    def stopped_pawnio(self, code, hvci):
+        with mock.patch.object(rgb, "service_state", lambda name: "STOPPED"), \
+                mock.patch.object(diag, "service_exit_code", lambda name: code), \
+                mock.patch.object(diag, "memory_integrity", lambda: hvci):
+            d = diag.collect_local("ConnectionError: refused")
+        return d, " ".join(d["hints"])
+
+    def test_pawnio_blocked_by_memory_integrity(self):
+        d, hints = self.stopped_pawnio(31, True)
+        self.assertIn("Memory integrity is on", hints)
+        self.assertIn("Windows Security > Device security > Core isolation", hints)
+        self.assertNotIn("Restart the PC, or run 'sc start PawnIO'", hints)
+        self.assertIn("PawnIO exit code: 31; Memory integrity: on", diag.text(d))
+
+    def test_pawnio_exit_code_31_without_memory_integrity_keeps_the_generic_hint(self):
+        for hvci in (False, None):
+            _, hints = self.stopped_pawnio(31, hvci)
+            self.assertIn("PawnIO driver service is STOPPED", hints)
+            self.assertNotIn("Memory integrity is on", hints)
+
+    def test_pawnio_marked_for_deletion(self):
+        _, hints = self.stopped_pawnio(1072, True)
+        self.assertIn("marked for deletion (exit code 1072)", hints)
+        self.assertNotIn("Memory integrity is on", hints)
+
+    def test_service_exit_code_is_read_by_shape_not_label(self):
+        sc = ("SERVICE_NAME: PawnIO \n        TYPE               : 1  KERNEL_DRIVER  \n        STATE              : 1  STOPPED \n"
+              "        WIN32_EXIT_CODE    : 31  (0x1f)\n        SERVICE_EXIT_CODE  : 0  (0x0)\n")
+        for text, want in ((sc, 31), ("FEHLER 1060", None)):
+            with mock.patch.object(diag.subprocess, "run", return_value=mock.Mock(stdout=text)):
+                self.assertEqual(REAL_SERVICE_EXIT_CODE("PawnIO"), want)
 
     def test_rgb_diagnose_falls_back_to_the_local_report(self):
         with mock.patch.object(rgb, "daemon", side_effect=ConnectionError("no daemon")), \

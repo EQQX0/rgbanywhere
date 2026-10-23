@@ -11,6 +11,7 @@ import csv
 import glob
 import os
 import platform
+import re
 import subprocess
 import sys
 
@@ -19,6 +20,7 @@ import rgbcore_client as rc
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAWNIO_SERVICE = "PawnIO"
+MEMORY_INTEGRITY_KEY = r"SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\HypervisorEnforcedCodeIntegrity"
 # Programs that talk to the same hardware. Two programs driving one device fight, and the loser usually wins.
 CONFLICTS = {
     "openrgb.exe": "OpenRGB", "icue.exe": "Corsair iCUE", "lghub.exe": "Logitech G HUB",
@@ -41,6 +43,28 @@ def _running_conflicts(own_pids=()):
         if len(row) > 1 and not (row[0].lower() == "openrgb.exe" and row[1] in {str(p) for p in own_pids}):
             names.add(row[0].lower())
     return sorted({label for exe, label in CONFLICTS.items() if exe in names})
+
+
+def service_exit_code(name):
+    """The Win32 exit code `sc query` reports for a stopped service (31 = driver failed to load, 1072 = marked for
+    deletion), or None. Found by its "31  (0x1f)" shape, not its label, which some Windows languages translate."""
+    try:
+        out = subprocess.run(["sc", "query", name], capture_output=True, text=True, errors="ignore", timeout=20,
+                             creationflags=0x08000000).stdout
+    except Exception:
+        return None
+    m = re.search(r"(\d+)\s+\(0x[0-9a-fA-F]+\)", out)
+    return int(m.group(1)) if m else None
+
+
+def memory_integrity():
+    """True when Windows' Memory integrity (HVCI) is switched on, False when off, None when it cannot be read."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, MEMORY_INTEGRITY_KEY) as k:
+            return bool(winreg.QueryValueEx(k, "Enabled")[0])
+    except (ImportError, OSError):
+        return None
 
 
 def _log_problems(path, n=12):
@@ -103,6 +127,8 @@ def _local(core_dir, log_dir, own_pid=None):
         "core_log_buses": [l[:200] for l in _log_lines(log, ("Registering I2C interface",))][-12:],
         "pawnio": {
             "service": rgb.service_state(PAWNIO_SERVICE),
+            "exit_code": service_exit_code(PAWNIO_SERVICE),
+            "memory_integrity": memory_integrity(),
             "lib": os.path.exists(os.path.join(core_dir, "PawnIOLib.dll")),
             "modules": sorted(os.path.basename(p) for p in glob.glob(os.path.join(core_dir, "*.bin"))),
         },
@@ -204,6 +230,13 @@ def hints(d):
     if svc is None:
         out.append("The PawnIO driver is not installed, so RAM lights cannot be reached. Install it with "
                    "'winget install namazso.PawnIO' (or run Setup again), restart the PC, then press Rescan.")
+    elif svc == "STOPPED" and d["pawnio"].get("exit_code") == 31 and d["pawnio"].get("memory_integrity"):
+        out.append("The PawnIO driver is installed but Windows could not load it (exit code 31), and Memory integrity is on, "
+                   "which blocks drivers like it. Turn it off: Windows Security > Device security > Core isolation > Memory "
+                   "integrity, restart the PC, then press Rescan. USB devices work meanwhile.")
+    elif svc == "STOPPED" and d["pawnio"].get("exit_code") == 1072:
+        out.append("The PawnIO driver service is marked for deletion (exit code 1072), left over from an earlier install or "
+                   "removal. Restart the PC so Windows finishes removing it, run Setup again, then press Rescan.")
     elif svc != "RUNNING":
         out.append("The PawnIO driver service is %s. Restart the PC, or run 'sc start PawnIO' as admin, then press Rescan." % svc)
     if d["core_exe_present"] and (not d["pawnio"]["lib"] or not d["pawnio"]["modules"]):
@@ -255,6 +288,9 @@ def text(d):
     p = d["pawnio"]
     lines.append("PawnIO driver: service %s; in the openrgb folder: PawnIOLib.dll %s, %d module(s) %s" % (
         p["service"] or "NOT INSTALLED", "present" if p["lib"] else "MISSING", len(p["modules"]), ", ".join(p["modules"])))
+    if p.get("exit_code") is not None or p.get("memory_integrity") is not None:
+        lines.append("  PawnIO exit code: %s; Memory integrity: %s" % (
+            p.get("exit_code"), {True: "on", False: "off", None: "unknown"}[p.get("memory_integrity")]))
     if d["helper_service"]["name"]:
         lines.append("Helper service %s: %s" % (d["helper_service"]["name"], d["helper_service"]["state"]))
     lines.append("Other RGB programs running: %s" % (", ".join(d["conflicts"]) or "none"))
