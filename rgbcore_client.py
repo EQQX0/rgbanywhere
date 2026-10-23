@@ -534,7 +534,11 @@ class SdkBackend:
                 dog = self._watchdog(cli)
                 try:
                     return fn(cli)
-                except _sdk_errors() as e:
+                except (RuntimeError, *_sdk_errors()) as e:
+                    # A reply broken off by a reset makes openrgb-python release its lock twice; that RuntimeError
+                    # hides the connection error. Any other RuntimeError is not about the connection.
+                    if isinstance(e, RuntimeError) and "unlocked lock" not in str(e):
+                        raise
                     self.last_error = "%s: %s" % (type(e).__name__, e)
                     if attempt == 2:
                         raise

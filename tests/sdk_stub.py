@@ -6,6 +6,7 @@ Failure switches on the server (each fires once and then resets):
   slow_version  answer the protocol version request 1.5 s late (openrgb-python falls back to protocol 0 after 1 s)
   cut_data      send half of the next controller data reply, then close the connection
   hang_data     never answer the next controller data request
+  reset_data    send half of the next controller data reply, then reset the connection (as a crashing OpenRGB does)
 """
 import logging
 import os
@@ -127,6 +128,13 @@ class Stub(socketserver.BaseRequestHandler):
                         data = pack_device(devs[dev])
                         if srv.take("hang_data"):
                             continue
+                        if srv.take("reset_data"):
+                            self.request.sendall(struct.pack("ccccIII", b"O", b"R", b"G", b"B", dev, 1, len(data))
+                                                 + data[:len(data) // 2])
+                            time.sleep(0.2)
+                            self.request.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+                            self.request.close()
+                            return
                         if srv.take("cut_data"):
                             self.request.sendall(struct.pack("ccccIII", b"O", b"R", b"G", b"B", dev, 1, len(data))
                                                  + data[:len(data) // 2])

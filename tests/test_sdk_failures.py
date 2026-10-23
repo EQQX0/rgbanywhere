@@ -97,6 +97,14 @@ class ConnectionTest(Base):
         self.assertEqual(len(b.devices()), 3)
         self.assertIn("last_error", b.debug())
 
+    def test_connection_reset_half_way_is_retried(self):
+        # openrgb-python then releases its lock twice, so the error arrives as "RuntimeError: release unlocked lock"
+        srv = self.server()
+        b = self.backend(port=srv.port, spawn=False)
+        srv.fail.add("reset_data")
+        self.assertEqual(len(b.devices()), 3)
+        self.assertIn("unlocked lock", b.debug()["last_error"])
+
     def test_unanswered_request_times_out_and_is_retried(self):
         srv = self.server()
         b = self.backend(port=srv.port, spawn=False)
