@@ -62,6 +62,12 @@ class RepoTest(unittest.TestCase):
                                     ".read(), sys.argv[1], 'exec')", os.path.join(ROOT, f)], capture_output=True, text=True)
                 self.assertEqual(r.returncode, 0, "%s: %s" % (f, r.stderr.strip()[-300:]))
 
+    def test_ci_never_fetches_openrgb(self):
+        ci = read(".github/workflows/tests.yml")
+        for word in ("fetch-openrgb", "codeberg", "OpenRGB.exe", "install.ps1", "PawnIO.exe", "winget"):
+            self.assertNotIn(word, ci)
+        self.assertIn("python -m unittest discover -s tests", ci)
+
     def test_task_and_port_names_agree(self):
         import rgbcore_client as rc
         for f in ("install.ps1", "uninstall.ps1", "installer/setup.cpp"):

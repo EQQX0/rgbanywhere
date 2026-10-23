@@ -1,0 +1,29 @@
+# Unit tests on every push. They run against a stub OpenRGB SDK server: nothing here downloads OpenRGB,
+# installs PawnIO or touches lighting hardware, and only openrgb-python is installed (no pywebview or pywin32).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install openrgb-python
+        run: python -m pip install openrgb-python==0.3.8
+      - name: Run the unit tests
+        run: python -m unittest discover -s tests -v
