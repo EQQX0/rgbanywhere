@@ -42,3 +42,18 @@ jobs:
         run: python -m pip install pyflakes
       - name: Run pyflakes
         run: python -m pyflakes $(git ls-files '*.py' '*.pyw')
+
+  installer:
+    # Cross-compiles the Setup exe with MinGW to catch build errors. The exe is not run or kept.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install MinGW-w64
+        run: sudo apt-get update -q && sudo apt-get install -y -q g++-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+      - name: Build installer/setup.cpp
+        working-directory: installer
+        run: |
+          x86_64-w64-mingw32-windres setup.rc -O coff -o setup_res.o
+          x86_64-w64-mingw32-g++ -std=c++17 -O2 -s -static -mwindows -municode -Wall -Werror -o RGB-Anywhere-Setup.exe \
+            setup.cpp setup_res.o -lwininet -ladvapi32 -lshell32 -lcomctl32 -lole32 -luuid
