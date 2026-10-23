@@ -7,13 +7,16 @@ Usage:
   python rgb.py                 reapply the last saved color/mode
   python rgb.py blue            named color or hex (0000FF / #0000FF)
   python rgb.py red breathing   optional mode (static, breathing, rainbow, spectrum cycle, off, ...)
-  python rgb.py ram=B32A00 fans=B32A00   per-device color (ram, fans, keyboard, mouse); keeps the rest
+  python rgb.py ram=B32A00 fans=B32A00   per-group color (ram, fans, keyboard, mouse, gpu, audio, other); keeps the rest
+  python rgb.py original        put every device back the way it was before RGB Anywhere first changed it
   python rgb.py brightness=60   0-100, scales every color
+  python rgb.py --restore       the same as "original" once, without saving it (Uninstall uses it)
   python rgb.py --diagnose      what was found and why devices or colors may be missing (changes nothing);
                                 also saved to logs\\diagnose-<time>.txt
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -27,7 +30,8 @@ _log = applog.get("lights")
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(HERE, "state.json")
 CONFIG = os.path.join(HERE, "config.json")
-GROUPS = ("ram", "fans", "keyboard", "mouse")  # what the UI can target; other devices follow the overall color
+ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before RGB Anywhere first changed it
+GROUPS = ("ram", "fans", "keyboard", "mouse", "gpu", "audio", "other")  # what the UI can target (only those a PC has)
 
 
 def load_config():
@@ -100,30 +104,38 @@ def to_color(h, brightness=100, gains=(100, 100, 100)):
                       for i, g in zip((0, 2, 4), gains)))
 
 
+# Every DeviceType OpenRGB 1.0 reports (rgbcore_client.DeviceType). Types with no group of their own go to "other".
 _TYPE_GROUP = {"DRAM": "ram", "MOTHERBOARD": "fans", "LEDSTRIP": "fans", "COOLER": "fans", "CASE": "fans",
-               "KEYBOARD": "keyboard", "KEYPAD": "keyboard", "MOUSE": "mouse", "MOUSEMAT": "mouse"}
+               "KEYBOARD": "keyboard", "KEYPAD": "keyboard", "MOUSE": "mouse", "MOUSEMAT": "mouse", "GPU": "gpu",
+               "HEADSET": "audio", "HEADSET_STAND": "audio", "SPEAKER": "audio", "MICROPHONE": "audio"}
+# OpenRGB files some fan hubs, docks and mats under ACCESSORY, LIGHT or UNKNOWN; their names say what they are.
+# Whole words, checked in order, so "Mouse Dock" is a mouse and "Addressable" is not DDR memory.
+_NAME_GROUP = [(re.compile(p, re.I), g) for p, g in (
+    (r"\bddr\d*\b|\bdram\b", "ram"), (r"\bmouse", "mouse"), (r"\bkeyboard|\bkeypad", "keyboard"),
+    (r"\bheadset|\bspeaker|\bmicrophone", "audio"),
+    (r"\bfans?\b|\bargb\b|\b(led|light) strip|\bcommander\b|\blighting node\b|\bhub\b|\bcooler\b", "fans"))]
+_NAME_GUESS_TYPES = {None, "ACCESSORY", "LIGHT", "UNKNOWN", "VIRTUAL"}
+GROUP_LABELS = {"ram": "RAM", "fans": "Fans & case", "keyboard": "Keyboard", "mouse": "Mouse", "gpu": "Graphics card",
+                "audio": "Audio", "other": "Other"}
 
 
 def group_of(dev):
-    """Which UI group a device belongs to: ram, fans (board/strips/coolers/case), keyboard, mouse, or other.
+    """Which UI group a device belongs to (one of GROUPS), from its OpenRGB type, or its name when the type says little.
 
-    `dev` is an OpenRGB device (classified by its type) or a name string. config.json `group_overrides`
-    ({"substring of device name": "group"}) wins over the type.
+    `dev` is an OpenRGB device or a name string. config.json `group_overrides` ({"substring of device name": "group"})
+    wins over both.
     """
     name = dev if isinstance(dev, str) else dev.name
     for needle, group in CFG.get("group_overrides", {}).items():
-        if needle.lower() in name.lower():
+        if needle.lower() in name.lower() and group in GROUPS:
             return group
     t = getattr(getattr(dev, "type", None), "name", None)
     if t in _TYPE_GROUP:
         return _TYPE_GROUP[t]
-    if t:
-        return "other"
-    # name only (no device object): best guess
-    if "DDR" in name or "DRAM" in name:
-        return "ram"
-    if "Mouse" in name:
-        return "mouse"
+    if t in _NAME_GUESS_TYPES:
+        for pattern, group in _NAME_GROUP:
+            if pattern.search(name):
+                return group
     return "other"
 
 
@@ -301,9 +313,64 @@ def uptime_s():
         return -1
 
 
+def load_originals():
+    """The devices' lighting saved before RGB Anywhere first changed it (see remember_originals), or []."""
+    try:
+        with open(ORIGINAL, encoding="utf-8") as f:
+            saved = json.load(f)
+        return saved if isinstance(saved, list) else []
+    except FileNotFoundError:
+        return []
+    except Exception:
+        _log.exception("original.json is unreadable; nothing to restore from it")
+        return []
+
+
+def remember_originals(backend):
+    """Save the lighting of every device not saved yet, before anything here changes it. Call it before apply().
+
+    Run on each detection, so a device plugged in later is saved too, before its first colour. A device saved once is
+    never saved again, so the file keeps what it had before RGB Anywhere, not what RGB Anywhere set. Returns how many
+    devices were added. Never raises: failing to save must not stop the lights."""
+    try:
+        saved = load_originals()
+        known = {tuple(s.get("key") or ()) for s in saved}
+        new = [s for s in backend.snapshot() if tuple(s["key"]) not in known]
+        if not new:
+            return 0
+        tmp = "%s.%d.tmp" % (ORIGINAL, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(saved + new, f, indent=1)
+        os.replace(tmp, ORIGINAL)
+        _log.info("saved the original lighting of %d device(s): %s", len(new),
+                  "; ".join("%s (%s)" % (s["name"], s["mode"]) for s in new))
+        applog.event("originals_saved", ok=True, devices=[s["name"] for s in new])
+        return len(new)
+    except Exception as e:
+        _log.exception("could not save the devices' original lighting")
+        applog.event("originals_saved", ok=False, error="%s: %s" % (type(e).__name__, e))
+        return 0
+
+
+def restore(client, log=print):
+    """Put every saved device back the way it was before RGB Anywhere (state mode "original"). Returns failures."""
+    res = client.restore(load_originals())
+    _log.info("restore: %d restored, missing %s, failed %s", len(res["restored"]), res["missing"] or "none",
+              res["failed"] or "none")
+    for name in res["restored"]:
+        log("ok   " + name)
+    for name in res["failed"]:
+        log("fail %s (could not restore)" % name)
+    applog.event("lights_restore", ok=not res["failed"], restored=len(res["restored"]), missing=res["missing"],
+                 failed=res["failed"])
+    return len(res["failed"])
+
+
 def apply(client, state, log=print):
     """Send the state to every device. Returns how many devices failed (a stale connection fails them all)."""
     mode = state["mode"]
+    if mode == "original":
+        return restore(client, log)
     failed = 0
     _log.info("apply: mode=%s color=%s groups=%s brightness=%s calibration=%s%s", mode, state.get("color"),
               state.get("groups"), state.get("brightness"), state.get("calibration"),
@@ -503,6 +570,8 @@ def _main():
     args = sys.argv[1:]
     if "--diagnose" in args:
         sys.exit(diagnose())
+    if "--restore" in args:  # Uninstall.exe, before it removes the daemon: hand the devices back, change nothing else
+        sys.exit(1 if restore(connect(wait=20)) else 0)
     unknown = [a for a in args if a.startswith("--") and a != "--restart"]
     if unknown:
         sys.exit("unknown option %s. See the usage at the top of rgb.py." % " ".join(unknown))
@@ -512,7 +581,9 @@ def _main():
         connect().rescan()
     groups = [a for a in args if "=" in a]
     rest = [a for a in args if "=" not in a]
-    if rest:
+    if rest == ["original"]:
+        state["mode"] = "original"
+    elif rest:
         state["color"] = to_hex(rest[0])
         state["mode"] = " ".join(rest[1:]).lower() or "static"
         state["groups"] = {}  # new overall color resets per-device colors

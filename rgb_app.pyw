@@ -522,7 +522,7 @@ class Api:
 
     def set_mode(self, mode):
         was_off = self._app.state.get("mode") == "off"
-        self._app.state["mode"] = "off" if mode == "off" else "static"
+        self._app.state["mode"] = mode if mode in ("off", "original") else "static"  # original: see rgb.restore
         self._app.commit()
         if mode == "off" and not was_off:  # lights off takes the monitors with it
             self._app.monitors_off(wake_lights=True)
@@ -757,7 +757,7 @@ Api = _logged_api(Api)
 class App:
     def __init__(self):
         self.state = rgb.load_state()
-        if self.state["mode"] not in ("static", "off"):
+        if self.state["mode"] not in ("static", "off", "original"):
             self.state["mode"] = "static"
         self.presets = self.state.setdefault("presets", json.loads(json.dumps(DEFAULT_PRESETS)))
         self.profiles = self.state.setdefault("profiles", [])
@@ -859,7 +859,7 @@ class App:
 
     def sync_accent(self):
         """Debounced: Windows redraws a lot on accent changes, so wait until edits settle."""
-        if not self.state.get("sync_accent") or self.state["mode"] == "off":
+        if not self.state.get("sync_accent") or self.state["mode"] in ("off", "original"):  # original: not our colour
             return
         if self.accent_timer:
             self.accent_timer.cancel()

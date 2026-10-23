@@ -7,6 +7,14 @@ $Dir = (Resolve-Path -LiteralPath $Dir).Path.TrimEnd('\')
 # Safety: only ever delete a folder named "RGB Anywhere" that holds this app.
 if ((Split-Path $Dir -Leaf) -ne 'RGB Anywhere' -or -not (Test-Path (Join-Path $Dir 'rgbd.py'))) { Write-Host "Refusing to delete $Dir"; exit 1 }
 
+# Hand the lights back first, while the daemon still runs: each device gets the lighting it had before RGB Anywhere
+# first changed it (original.json), so the vendor's app or the device's own effect takes over again.
+$py = Join-Path $Dir 'python\python.exe'
+if ((Test-Path $py) -and (Test-Path (Join-Path $Dir 'original.json'))) {
+    $p = Start-Process $py -ArgumentList "`"$(Join-Path $Dir 'rgb.py')`" --restore" -WorkingDirectory $Dir -WindowStyle Hidden -PassThru
+    if (-not $p.WaitForExit(60000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; Write-Host 'Restoring the original lighting timed out' }
+}
+
 foreach ($t in 'RGB Anywhere Lighting', 'RGB Anywhere Rescan') {
     Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue

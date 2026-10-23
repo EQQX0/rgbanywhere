@@ -78,6 +78,37 @@ class Through:
         self.assertEqual(aura.set_color(rc.RGBColor(1, 2, 3)), 0)
         self.assertEqual(colours(self.srv.devices[4]), [(1, 2, 3)] * 30)
 
+    def test_original_lighting_is_saved_once_and_restored(self):
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            with self.srv.guard:  # what the devices showed before RGB Anywhere
+                self.srv.devices[0].modes[1].colors = [u.RGBColor(255, 0, 0)]
+                self.srv.devices[1].colors = [u.RGBColor(0, 255, 0)] * 4
+            self.assertEqual(rgb.remember_originals(self.backend), 5)
+            self.assertEqual(self.apply(color="0000FF"), 0)
+            self.assertEqual(colours(self.srv.devices[1]), [(0, 0, 255)] * 4)
+            self.assertEqual(rgb.remember_originals(self.backend), 0)  # never overwritten with our own colours
+            self.assertEqual(self.apply(mode="original"), 0)
+        d = self.srv.devices
+        self.assertEqual((d[0].active_mode, mode_colours(d[0].modes[1])), (1, [(255, 0, 0)]))
+        self.assertEqual(colours(d[1]), [(0, 255, 0)] * 4)
+        self.assertEqual(d[2].active_mode, 0)  # the effects-only fan was never touched
+
+    def test_a_device_plugged_in_later_is_saved_before_its_first_colour(self):
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            rgb.remember_originals(self.backend)
+            with self.srv.guard:
+                self.srv.devices.append(st.device("Late Mouse", u.DeviceType.MOUSE, [st.mode(0, "Direct",
+                                        u.ModeFlags.HAS_PER_LED_COLOR, u.ModeColors.PER_LED)], 0, 2, location="usb9"))
+            self.assertEqual(rgb.remember_originals(self.backend), 1)
+            self.assertEqual([s["name"] for s in rgb.load_originals()][-1], "Late Mouse")
+
+    def test_restore_without_a_saved_copy_changes_nothing(self):
+        with mock.patch.object(rgb, "ORIGINAL", os.path.join(self.tmp.name, "none.json")):
+            self.assertEqual(self.apply(mode="original"), 0)
+        self.assertEqual(colours(self.srv.devices[1]), [(0, 0, 0)] * 4)
+
     def test_a_failing_device_does_not_stop_the_others(self):
         with self.srv.guard:
             self.srv.devices[0].active_mode = 9  # no such mode: set_colors refuses this device
