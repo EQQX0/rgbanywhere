@@ -34,6 +34,9 @@ if (Test-Path $bundled) {
     $py = (Get-Command python -ErrorAction SilentlyContinue).Source
     if (-not $py) { $py = (& py -3 -c "import sys;print(sys.executable)" 2>$null) }
     if (-not $py) { throw "Python 3.10+ not found. Install it from python.org (tick 'Add to PATH'), then run this again." }
+    # The Microsoft Store alias (WindowsApps\python.exe) is not a Python, and older versions lack what the app uses
+    $ok = (& $py -c "import sys; print(sys.version_info >= (3, 10))" 2>$null)
+    if ($ok -ne 'True') { throw "$py is not Python 3.10 or newer. Install Python from python.org (tick 'Add to PATH'), then run this again." }
     $pyw = Join-Path (Split-Path $py) 'pythonw.exe'
     Write-Host "Python: $py"
     & $py -m pip install --upgrade -r (Join-Path $here 'requirements.txt')
