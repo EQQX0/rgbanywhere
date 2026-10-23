@@ -57,7 +57,18 @@ NAMES = {
 
 
 def to_hex(s):
-    return NAMES.get(s.lower(), s.lstrip("#")).upper()
+    """Color name or hex (0000FF / #0000FF) -> "0000FF". Raises ValueError for anything else."""
+    h = NAMES.get(s.lower(), s.lstrip("#")).upper()
+    if len(h) != 6 or any(c not in "0123456789ABCDEF" for c in h):
+        raise ValueError("not a color: %r (use a name like blue or a hex code like 0000FF)" % s)
+    return h
+
+
+def valid_hex(h):
+    try:
+        return to_hex(str(h)) == str(h).upper()
+    except ValueError:
+        return False
 
 
 def to_color(h, brightness=100, gains=(100, 100, 100)):
@@ -109,6 +120,7 @@ def load_state():
             state.update(json.load(f))
     except FileNotFoundError:
         _log.info("no state.json yet, using defaults")
+        return state
     except Exception:
         # Keep the damaged file for inspection instead of silently overwriting it with defaults.
         keep = "%s.corrupt-%s" % (STATE, time.strftime("%Y%m%d-%H%M%S"))
@@ -118,6 +130,14 @@ def load_state():
             os.replace(STATE, keep)
         except OSError:
             pass
+    # A bad color (an older rgb.py saved any argument as one) would make every device fail: fall back and say so.
+    if not valid_hex(state.get("color")):
+        _log.warning("state.json has an invalid color %r; using 0000FF", state.get("color"))
+        state["color"] = "0000FF"
+    groups = state.get("groups") or {}
+    for g in [g for g, h in groups.items() if not valid_hex(h)]:
+        _log.warning("state.json has an invalid %s color %r; dropping it", g, groups[g])
+        del groups[g]
     return state
 
 
@@ -367,6 +387,9 @@ def _main():
     args = sys.argv[1:]
     if "--diagnose" in args:
         sys.exit(diagnose())
+    unknown = [a for a in args if a.startswith("--") and a != "--restart"]
+    if unknown:
+        sys.exit("unknown option %s. See the usage at the top of rgb.py." % " ".join(unknown))
     try:
         if "--restart" in args:  # re-detect devices (the daemon stops/starts the cooler helper around it)
             args.remove("--restart")
