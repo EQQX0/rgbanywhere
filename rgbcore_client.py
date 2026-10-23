@@ -288,8 +288,8 @@ def _kill_on_close_job():
                     ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD), ("SchedulingClass", wintypes.DWORD)]
 
     class Extended(ctypes.Structure):
-        _fields_ = [("BasicLimitInformation", Basic), ("IoInfo", ctypes.c_uint64 * 6), ("ProcessMemoryLimit", ctypes.c_size_t),
-                    ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        _fields_ = [("BasicLimitInformation", Basic), ("IoInfo", ctypes.c_uint64 * 6),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
                     ("PeakJobMemoryUsed", ctypes.c_size_t)]
     k = ctypes.WinDLL("kernel32", use_last_error=True)
     k.CreateJobObjectW.restype = wintypes.HANDLE
@@ -320,8 +320,8 @@ class SdkBackend:
 
     A dropped connection is made again; if OpenRGB exited it is started again (at most MAX_RESTARTS times in
     RESTART_WINDOW, then requests fail until a rescan) and on_restart() is called, because a fresh OpenRGB has forgotten
-    the colours (zone sizes it keeps in Configuration.json). Requests take an optional device key ([name, location]) so a request made with an index
-    from before a restart still reaches the same device.
+    the colours (zone sizes it keeps in Configuration.json). Requests take an optional device key ([name, location]),
+    so a request made with an index from before a restart still reaches the same device.
 
     spawn=False connects to a server somebody else started (used by the tests)."""
 
