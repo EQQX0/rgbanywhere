@@ -2,7 +2,7 @@
 
 ## Report (kept current; read this first)
 
-State: tasks 1 to 8 of the brief are done and pushed; a fresh-eyes pass is under way. Nothing here has run on real hardware or against the real OpenRGB.exe. CI (`.github/workflows/tests.yml`) runs the unit tests on Ubuntu and Windows (Python 3.10 and 3.13), pyflakes, a PowerShell parse check and a MinGW build of the Setup exe.
+State: tasks 1 to 8 of the brief are done and pushed; a fresh-eyes pass is under way. Nothing here has run on real hardware or against the real OpenRGB.exe. CI (`.github/workflows/tests.yml`) runs the unit tests on Ubuntu and Windows (Python 3.10 and 3.13), pyflakes, a PowerShell parse check and a MinGW build of the Setup exe. CI green at 07bb19e (all 106 tests ran on Windows, none skipped).
 
 Fixed:
 1. OpenRGB crash, hang, slow start, busy port, SDK timeouts, cut-off or reset replies: reconnect, restart (max 3 in 5 min), retry once.

@@ -29,7 +29,8 @@ class ScriptsParseTest(unittest.TestCase):
         files = [os.path.join(ROOT, f) for f in ("install.ps1", "uninstall.ps1", "package.ps1", "fetch-openrgb.ps1",
                                                   os.path.join("installer", "build.ps1"))]
         with tempfile.TemporaryDirectory() as tmp:
-            src = open(os.path.join(ROOT, "installer", "setup.cpp"), encoding="utf-8").read()
+            with open(os.path.join(ROOT, "installer", "setup.cpp"), encoding="utf-8") as f:
+                src = f.read()
             update = os.path.join(tmp, "update.ps1")
             with open(update, "w", encoding="utf-8") as f:
                 f.write(src[src.index('R"PS(') + 5:src.index(')PS"')])
