@@ -128,6 +128,15 @@ If devices are missing or colors don't change, run this in PowerShell from the i
 
 It lists what the lighting daemon found: whether it runs as admin, whether OpenRGB started (and why not), the PawnIO driver state, the SMBus buses OpenRGB's log says it opened, every device with its modes, zones and how each mode takes colors, other RGB programs that are running, the newest OpenRGB log, and a numbered list of likely problems. If the daemon does not answer, it reports what it can see without it and exits with code 1. It saves the same text to `logs\diagnose-<time>.txt`. The daemon also writes this diagnosis to `logs\rgb.log` each time it detects devices.
 
+What the common messages mean:
+
+| Message | Cause and fix |
+|---------|---------------|
+| Status "OpenRGB did not start" | The daemon runs but OpenRGB did not. `--diagnose` says why: OpenRGB missing (reinstall), port 47826 taken by another program, or OpenRGB exiting at start (see its log). Press Rescan to try again. |
+| "OpenRGB stopped 3 times in 5 minutes" | OpenRGB keeps crashing, so the daemon stopped restarting it. Read the newest `cache\core\logs\OpenRGB_*.log`, then press Rescan. |
+| Status "Lighting service not running" | The daemon does not answer. Run `schtasks /run /tn "RGB Anywhere Lighting"`; if it stops again, `logs\errors.log` says why (for example "port 47823 ... is taken by another program"). |
+| "<device> has 0 LEDs" | An addressable header with no size. Set `argb_leds` in `config.json` and press Rescan. |
+
 Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
