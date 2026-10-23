@@ -22,7 +22,6 @@ import secrets
 import shutil
 import sys
 import threading
-import time
 import traceback
 import zipfile
 

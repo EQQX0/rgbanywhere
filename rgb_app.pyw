@@ -934,12 +934,12 @@ class App:
             self.jobs.put("connect")
         threading.Thread(target=later, daemon=True, name="rescan-wait").start()
 
-    def after_rescan(self):
+    def after_rescan(self, client):
         """Rescan again, up to RESCAN_RETRIES times, when a rescan brought the RAM up wrong."""
         if not self.rescan_check:
             return
         self.rescan_check = False
-        wrong = rgb.ram_problem(self.client)
+        wrong = rgb.ram_problem(client)
         if not wrong:
             log.info("RAM is right after the rescan%s", " (%d repeated)" % self.rescan_tries if self.rescan_tries else "")
             return
@@ -964,34 +964,37 @@ class App:
                 nxt = self.jobs.get()
                 job = "connect" if "connect" in (job, nxt) else nxt
             try:
-                if self.client is None or job == "connect":
+                client = self.client  # a rescan may drop self.client from another thread meanwhile
+                if client is None or job == "connect":
                     self.set_status("Connecting…", "warn")
-                    self.client = rgb.connect(wait=45)
-                    rgb.prepare(self.client)
-                    self.note_devices()
-                    self.set_status("%d devices" % len(self.client.devices), "ok")
+                    client = self.client = rgb.connect(wait=45)
+                    rgb.prepare(client)
+                    self.note_devices(client)
+                    self.set_status("%d devices" % len(client.devices), "ok")
                     if job == "connect":  # the one queued once the rescan task is done, so detection has finished
-                        self.after_rescan()
+                        self.after_rescan(client)
                     if self.client is None:
                         continue  # the repeat rescan started straight away
                 st = dict(self.state)
                 if self.test_color:
                     st.update(test=self.test_color, mode="static")
-                if rgb.apply(self.client, st, log=self._rgb_log):
+                if rgb.apply(client, st, log=self._rgb_log):
                     # some/all devices failed: OpenRGB probably restarted (Rescan, sleep). Reconnect once and retry.
                     log.warning("some devices failed to take the colors; reconnecting to the lighting daemon and retrying once")
                     self.set_status("Reconnecting…", "warn")
-                    self.client = rgb.connect(wait=20)
-                    rgb.prepare(self.client)
-                    self.note_devices()
-                    self.set_status("%d devices" % len(self.client.devices), "ok")
-                    again = rgb.apply(self.client, st, log=self._rgb_log)
+                    client = self.client = rgb.connect(wait=20)
+                    rgb.prepare(client)
+                    self.note_devices(client)
+                    self.set_status("%d devices" % len(client.devices), "ok")
+                    again = rgb.apply(client, st, log=self._rgb_log)
                     applog.event("lights_retry", ok=not again, failed_after_retry=again)
             except Exception as e:
                 log.exception("lights worker failed (job=%s)", job)
                 applog.event("lights_worker", ok=False, job=job, error="%s: %s" % (type(e).__name__, e))
                 self.client = None
-                self.set_status("Lighting service not running", "bad")
+                # the daemon answers with OpenRGB's start error when that is the problem (see rgbd._need_core)
+                self.set_status("OpenRGB did not start" if "OpenRGB did not start" in str(e) else
+                                "Lighting service not running", "bad")
 
     def idle_watch(self):
         """Rescan when the user comes back to an idle PC, to take the keyboard and mouse back (see IDLE_AFTER)."""
@@ -1032,9 +1035,9 @@ class App:
         pass
 
     # ----- what this PC has -----
-    def note_devices(self):
+    def note_devices(self, client):
         """Remember which of the four UI groups have a device, so the UI only offers those (kept for the next start)."""
-        found = {rgb.group_of(d) for d in self.client.devices}
+        found = {rgb.group_of(d) for d in client.devices}
         groups = [g for g in rgb.GROUPS if g in found]
         if groups and groups != self.state.get("device_groups"):
             self.state["device_groups"] = groups
