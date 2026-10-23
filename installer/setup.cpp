@@ -23,6 +23,7 @@
 #include <shlobj.h>
 #include <shellapi.h>
 #include <cstdio>
+#include <cstring>
 #include <cwchar>
 #include <string>
 #include <vector>
@@ -141,6 +142,33 @@ static DWORD run_hidden(const std::wstring &cmd, const std::wstring &dir)
 
 struct Options { bool desktop, startup; };
 
+// An update runs this elevated instead of unpacking first: the lighting daemon (elevated), OpenRGB and the app keep
+// files in the install folder open, and only an elevated process can end the daemon. It frees the folder, unpacks
+// the zip and then runs install.ps1 as a first install does.
+static const char UPDATE_PS1[] = R"PS(param([string]$Dir, [string]$Zip, [switch]$Desktop, [switch]$NoStartup)
+$log = Join-Path $Dir 'install.log'
+Stop-ScheduledTask -TaskName 'RGB Anywhere Lighting' -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ProcessId -ne $PID -and
+        $_.ExecutablePath.StartsWith($Dir + '\', [StringComparison]::OrdinalIgnoreCase) } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Start-Sleep -Seconds 2
+& "$env:SystemRoot\System32\tar.exe" -xf $Zip -C $Dir --strip-components=1 2>&1 | Out-File $log -Encoding utf8
+if ($LASTEXITCODE) { "Unpacking failed (tar exit code $LASTEXITCODE)." | Add-Content $log; exit 3 }
+$a = @{ Quiet = $true }
+if ($Desktop) { $a.Desktop = $true }
+if ($NoStartup) { $a.NoStartup = $true }
+& (Join-Path $Dir 'install.ps1') @a
+exit $LASTEXITCODE
+)PS";
+
+static bool write_file(const std::wstring &path, const char *text)
+{
+    FILE *f = _wfopen(path.c_str(), L"wb");
+    if (!f) return false;
+    bool ok = fwrite(text, 1, strlen(text), f) == strlen(text);
+    return fclose(f) == 0 && ok;
+}
+
 static DWORD WINAPI worker(LPVOID p)
 {
     Options opt = *(Options *)p;
@@ -189,22 +217,40 @@ static DWORD WINAPI worker(LPVOID p)
     SHCreateDirectoryExW(NULL, g_dest.c_str(), NULL);
     wchar_t sys[MAX_PATH];
     GetSystemDirectoryW(sys, MAX_PATH);
-    DWORD rc = run_hidden(std::wstring(L"\"") + sys + L"\\tar.exe\" -xf \"" + zip + L"\" -C \"" + g_dest + L"\" --strip-components=1", L"");
-    DeleteFileW(zip.c_str());
-    if (rc != 0) {
-        finish(false, L"Could not unpack the files. If RGB Anywhere is already running, quit it from the tray icon and run Setup again.");
-        return 0;
+    // An earlier install may be running from the folder; then the elevated step unpacks (see UPDATE_PS1)
+    bool update = GetFileAttributesW((g_dest + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES;
+    std::wstring script = std::wstring(tmp) + L"rgbanywhere-update.ps1";
+    if (update) {
+        if (!write_file(script, UPDATE_PS1)) {
+            DeleteFileW(zip.c_str());
+            finish(false, L"Could not write the update script to the temp folder.");
+            return 0;
+        }
+    } else {
+        DWORD rc = run_hidden(std::wstring(L"\"") + sys + L"\\tar.exe\" -xf \"" + zip + L"\" -C \"" + g_dest + L"\" --strip-components=1", L"");
+        DeleteFileW(zip.c_str());
+        if (rc != 0) {
+            finish(false, L"Could not unpack the files. Check that the disk is not full and run Setup again.");
+            return 0;
+        }
     }
     wchar_t self[MAX_PATH];
     GetModuleFileNameW(NULL, self, MAX_PATH);   // this exe becomes the uninstaller (Settings > Apps runs it with /uninstall)
     CopyFileW(self, (g_dest + L"\\Uninstall.exe").c_str(), FALSE);
-    if (!env(L"RGBANYWHERE_NO_INSTALL").empty()) { post_progress(100); finish(true, L"Unpacked (install step skipped)."); return 0; }
+    if (!env(L"RGBANYWHERE_NO_INSTALL").empty()) {
+        if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
+        post_progress(100);
+        finish(true, update ? L"An earlier install is there; updating it needs the install step, which was skipped." : L"Unpacked (install step skipped).");
+        return 0;
+    }
 
-    post_status(L"Setting up. Windows will ask for permission.");
+    post_status(update ? L"Updating. Windows will ask for permission." : L"Setting up. Windows will ask for permission.");
     post_progress(88);
     PostMessageW(g_wnd, WM_MARQUEE, 1, 0);
     g_elevated = true;
-    std::wstring args = L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + g_dest + L"\\install.ps1\" -Quiet";
+    std::wstring args = update
+        ? L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + L"\" -Dir \"" + g_dest + L"\" -Zip \"" + zip + L"\""
+        : L"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + g_dest + L"\\install.ps1\" -Quiet";
     if (opt.desktop) args += L" -Desktop";
     if (!opt.startup) args += L" -NoStartup";
     std::wstring ps = std::wstring(sys) + L"\\WindowsPowerShell\\v1.0\\powershell.exe";
@@ -218,6 +264,7 @@ static DWORD WINAPI worker(LPVOID p)
     if (!ShellExecuteExW(&sei)) {
         DWORD e = GetLastError();
         g_elevated = false;
+        if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
         finish(false, e == ERROR_CANCELLED
                           ? L"Permission was declined. RGB Anywhere needs it to run the lighting service. Run Setup again and choose Yes."
                           : L"Could not start the installer step.");
@@ -229,6 +276,7 @@ static DWORD WINAPI worker(LPVOID p)
     GetExitCodeProcess(sei.hProcess, &code);
     CloseHandle(sei.hProcess);
     g_elevated = false;
+    if (update) { DeleteFileW(zip.c_str()); DeleteFileW(script.c_str()); }
     if (code != 0) { finish(false, L"The setup step failed. The log shows what went wrong."); return 0; }
     post_progress(100);
     finish(true, L"");

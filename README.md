@@ -29,7 +29,7 @@ OpenRGB probes many buses, including SMBus on the motherboard, including SMBus o
 
 Download `RGB-Anywhere-Setup.exe` from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup downloads the app (about 75 MB), checks its SHA-256, unpacks it to `%LOCALAPPDATA%\RGB Anywhere` and runs the installer, which asks for admin once. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
 
-To update, quit the app from the tray icon and run Setup again.
+To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. (This update path is new and has not been tried on a real PC yet.)
 
 To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts and the install folder, including your settings. The PawnIO driver stays, because other programs may use it.
 
