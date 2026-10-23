@@ -262,6 +262,10 @@ def build_report(diagnosis=None):
                     z.write(os.path.join(core_logs, name), "core-logs/" + name)
                 except OSError as e:
                     z.writestr("core-logs/%s.unreadable.txt" % name, str(e))
+        for name in ("OpenRGB.json", "Configuration.json"):  # OpenRGB's settings and the zone sizes it saved
+            p = os.path.join(HERE, "cache", "core", name)
+            if os.path.isfile(p):
+                z.write(p, "core-config/" + name)
         if diagnosis:
             z.writestr("diagnosis.txt", redact(diagnosis))
         try:
