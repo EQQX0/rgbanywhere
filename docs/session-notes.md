@@ -2,7 +2,7 @@
 
 ## Report (kept current; read this first)
 
-State: tasks 1 to 8 of the brief are done and pushed; a fresh-eyes pass is under way. Nothing here has run on real hardware or against the real OpenRGB.exe. CI (`.github/workflows/tests.yml`) runs the unit tests on Ubuntu and Windows, Python 3.10 and 3.13.
+State: tasks 1 to 8 of the brief are done and pushed; a fresh-eyes pass is under way. Nothing here has run on real hardware or against the real OpenRGB.exe. CI (`.github/workflows/tests.yml`) runs the unit tests on Ubuntu and Windows (Python 3.10 and 3.13), pyflakes, a PowerShell parse check and a MinGW build of the Setup exe.
 
 Fixed:
 1. OpenRGB crash, hang, slow start, busy port, SDK timeouts, cut-off or reset replies: reconnect, restart (max 3 in 5 min), retry once.
@@ -18,7 +18,7 @@ Fixed:
 11. THIRD_PARTY_LICENSES.md checked against upstream where possible.
 12. After a rescan the app follows the daemon, not schtasks' English "Running"; a renumbering notice is read before any write; app worker race fixed; presets, profiles and service states checked.
 
-Tests: 99, all passing on Linux (Python 3.10 and 3.13) and in CI on Windows (`python -m unittest discover -s tests -v`). Files: test_sdk_backend, test_sdk_failures, test_apply, test_argb, test_diag, test_repo, test_rgbctl, test_applog.
+Tests: 106 (1 skipped here: no PowerShell on PATH), all passing on Linux (Python 3.10 and 3.13) and in CI on Windows (`python -m unittest discover -s tests -v`). Files: test_sdk_backend, test_sdk_failures, test_apply, test_argb, test_diag, test_repo, test_rgbctl, test_applog, test_rgbd, test_scripts.
 
 Unverified on hardware: everything touching OpenRGB.exe, PawnIO, RAM, ARGB sizing, colours, monitors-off, the job object, leftover-process cleanup, Setup's update path, package.ps1 output.
 
@@ -69,6 +69,11 @@ These change lights or processes:
 21. d323fd3 README message table.
 22. eb672cd Presets and profiles validated on restore and apply.
 23. 9d38984 Debug report adds OpenRGB.json and Configuration.json.
+24. 03e4db8 Daemon start, retry and rescan tests.
+25. cad3d03 pyflakes job in CI.
+26. d63fd17 install.ps1 checks for Python 3.10+ (Store alias).
+27. b4ff8fd PowerShell parse test.
+28. 9995c03 MinGW build of the Setup exe in CI.
 
 ## Next
 
