@@ -126,7 +126,7 @@ If devices are missing or colors don't change, run this in PowerShell from the i
 .\python\python.exe rgb.py --diagnose
 ```
 
-It lists what the lighting daemon found: whether it runs as admin, the PawnIO driver state, the SMBus buses it opened, every device with its modes and how each mode takes colors, other RGB programs that are running, and a numbered list of likely problems. It saves the same text to `logs\diagnose-<time>.txt`. The daemon also writes this diagnosis to `logs\rgb.log` each time it detects devices.
+It lists what the lighting daemon found: whether it runs as admin, whether OpenRGB started (and why not), the PawnIO driver state, the SMBus buses OpenRGB's log says it opened, every device with its modes, zones and how each mode takes colors, other RGB programs that are running, the newest OpenRGB log, and a numbered list of likely problems. If the daemon does not answer, it reports what it can see without it and exits with code 1. It saves the same text to `logs\diagnose-<time>.txt`. The daemon also writes this diagnosis to `logs\rgb.log` each time it detects devices.
 
 Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
 

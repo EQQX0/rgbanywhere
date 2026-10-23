@@ -65,6 +65,8 @@ class Mode:
         info = info or {}
         self.color_kind = COLOR_KINDS.get(info.get("color_mode"), "?")
         self.colors = info.get("colors")
+        self.brightness = info.get("brightness")
+        self.brightness_min, self.brightness_max = info.get("brightness_min"), info.get("brightness_max")
 
 
 class Zone:

@@ -180,16 +180,26 @@ def connect(wait=60):
 
     The daemon is elevated because RAM and some boards are reached over SMBus; this process need not be.
     """
+    return _retry(lambda: rgbcore_client.Client(rgbcore_client.RemoteBackend()), wait)
+
+
+def daemon(wait=30):
+    """The daemon's RemoteBackend, without asking for devices: it answers even when OpenRGB did not start."""
+    return _retry(lambda: rgbcore_client.RemoteBackend(timeout=60), wait)
+
+
+def _retry(make, wait):
+    """make() until it works, starting the daemon's task after the first failure."""
     last = None
     for attempt in range(wait):
         try:
-            client = rgbcore_client.Client(rgbcore_client.RemoteBackend())
+            got = make()
             _log.info("connected to the lighting daemon%s", " after %d attempts" % (attempt + 1) if attempt else "")
-            return client
+            return got
         except Exception as e:
             last = "%s: %s" % (type(e).__name__, e)
             if attempt == 0:
-                _log.warning("lighting daemon not reachable (%s: %s); starting it", type(e).__name__, e)
+                _log.warning("lighting daemon not reachable (%s); starting it", last)
                 r = _quiet("schtasks", "/run", "/tn", rgbcore_client.TASK_LIGHTING)
                 _log.info("schtasks /run 'RGB Anywhere Lighting' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
             time.sleep(1)
@@ -353,13 +363,9 @@ def diagnose():
     import datetime
     import diag
     try:
-        client = connect(wait=30)
-    except ConnectionError:
-        print("The lighting daemon is not running and could not be started.\n"
-              "Check that the scheduled task exists:  schtasks /query /tn \"%s\"\n"
-              "and read logs\\rgb.log." % rgbcore_client.TASK_LIGHTING)
-        return 1
-    d = client._b.debug()
+        d = daemon(wait=30).debug()
+    except (ConnectionError, RuntimeError, OSError, ValueError) as e:  # what this process can see on its own
+        d = diag.collect_local("%s: %s" % (type(e).__name__, e))
     report = diag.text(d)
     print(report)
     os.makedirs(applog.LOG_DIR, exist_ok=True)
@@ -367,8 +373,8 @@ def diagnose():
     with open(path, "w", encoding="utf-8") as f:
         f.write(report + "\n\n" + json.dumps(d, indent=2, ensure_ascii=False))
     print("\nSaved to " + path)
-    applog.event("diagnose", ok=not d["hints"], hints=d["hints"], devices=len(d["devices"]))
-    return 0
+    applog.event("diagnose", ok=not d["hints"], hints=d["hints"], devices=len(d["devices"] or []), daemon=d["daemon"])
+    return 0 if d["daemon"] else 1
 
 
 def _quiet(*cmd):

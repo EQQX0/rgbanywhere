@@ -564,14 +564,14 @@ class Api:
         subprocess.Popen(["explorer", applog.LOG_DIR])
 
     def save_report(self):
-        diagnosis = None
+        import diag
         try:
-            import diag
-            client = self._app.client if self._app.client is not None else rgb.connect(wait=10)
-            diagnosis = diag.text(client._b.debug())
+            client = self._app.client  # the lights worker may drop it meanwhile
+            backend = client._b if client is not None else rgb.daemon(wait=10)
+            diagnosis = diag.text(backend.debug())
         except Exception as e:
-            log.warning("debug report without a diagnosis: %s: %s", type(e).__name__, e)
-            diagnosis = "Could not ask the lighting daemon: %s: %s" % (type(e).__name__, e)
+            log.warning("debug report without the daemon's diagnosis: %s: %s", type(e).__name__, e)
+            diagnosis = diag.text(diag.collect_local("%s: %s" % (type(e).__name__, e)))
         path = applog.build_report(diagnosis)
         subprocess.Popen(["explorer", "/select,", path])
         applog.event("debug_report", ok=True, path=path)
