@@ -43,7 +43,21 @@ def load_config():
 
 
 CFG = load_config()
-ARGB_LEDS = int(CFG.get("argb_leds", 60))  # LEDs to give each empty motherboard ARGB header; OpenRGB forgets sizes on restart
+
+
+def _argb_leds(value, default=60):
+    """config.json argb_leds as a whole number of 1 or more. A bad value must not stop the daemon from starting."""
+    try:
+        n = int(str(value).strip())  # via str: 60.5 and true are refused, not rounded
+    except ValueError:
+        n = 0
+    if n >= 1:
+        return n
+    _log.warning("config.json argb_leds %r is not a whole number of 1 or more; using %d", value, default)
+    return default
+
+
+ARGB_LEDS = _argb_leds(CFG.get("argb_leds", 60))  # LEDs to give each empty ARGB header; OpenRGB forgets sizes on restart
 HELPER_SERVICE = CFG.get("helper_service")  # a sensor service that disturbs OpenRGB's RAM detection; stopped during rescans
 RAM_EXPECTED = CFG.get("ram_expected")      # sticks that should be found; None = don't check
 RAM_SAME_MODEL = bool(CFG.get("ram_same_model", False))  # flag sticks detected as different models (a misread on matched kits)
@@ -192,18 +206,31 @@ def is_elevated():
         return False
 
 
+def argb_size(zone):
+    """LEDs to give `zone` if it is an empty addressable header, else None. ARGB_LEDS is kept within the zone's range:
+    OpenRGB ignores a size outside it without saying so."""
+    if zone.leds_max is None:  # a daemon that does not report the range: the old rule
+        return ARGB_LEDS if zone.type.name == "LINEAR" and len(zone.leds) < 2 else None
+    if zone.leds_min >= zone.leds_max or len(zone.leds) >= 2:  # fixed LEDs, or already sized
+        return None
+    return max(zone.leds_min, min(ARGB_LEDS, zone.leds_max))
+
+
 def prepare(client):
     client.update()
     for dev in client.devices:
-        if group_of(dev) == "fans":
-            for zone in dev.zones:
-                # Only empty addressable headers: fixed zones (onboard LEDs) can't be resized.
-                if zone.type.name == "LINEAR" and len(zone.leds) < 2:
-                    _log.info("resizing %s / %s from %d to %d LEDs", dev.name, zone.name, len(zone.leds), ARGB_LEDS)
-                    try:
-                        zone.resize(ARGB_LEDS)
-                    except Exception:
-                        _log.exception("Couldn't resize %s / %s", dev.name, zone.name)
+        for zone in dev.zones:
+            n = argb_size(zone)
+            if n is None or n == len(zone.leds):
+                continue
+            if n != ARGB_LEDS:
+                _log.warning("%s / %s takes %d to %d LEDs; giving it %d instead of argb_leds %d", dev.name, zone.name,
+                             zone.leds_min, zone.leds_max, n, ARGB_LEDS)
+            _log.info("resizing %s / %s from %d to %d LEDs", dev.name, zone.name, len(zone.leds), n)
+            try:
+                zone.resize(n)
+            except Exception:
+                _log.exception("Couldn't resize %s / %s", dev.name, zone.name)
     client.update()
     names = [d.name for d in client.devices]
     _log.info("devices (%d): %s", len(names), "; ".join("%s [%s]" % (n, group_of(d)) for n, d in zip(names, client.devices)))

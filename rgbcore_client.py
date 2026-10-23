@@ -73,7 +73,7 @@ class Zone:
         self.name = j["name"]
         self.type = _enum(ZoneType, j["type"])
         self.leds = [None] * j["leds"]  # callers only use len()
-        self.leds_min, self.leds_max = j.get("leds_min", 0), j.get("leds_max", 0)
+        self.leds_min, self.leds_max = j.get("leds_min"), j.get("leds_max")  # None from a daemon that does not say
 
     def resize(self, n):
         self._dev._client._b.resize_zone(self._dev._idx, self._idx, n, key=self._dev.key)

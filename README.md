@@ -68,7 +68,7 @@ Copy `config.example.json` to `config.json`. The file and every key are optional
 
 | Key | Meaning |
 |-----|---------|
-| `argb_leds` | LEDs to give each empty motherboard ARGB header (default 60) |
+| `argb_leds` | LEDs to give each empty addressable (ARGB) header or strip, kept within what the header allows (default 60) |
 | `group_overrides` | `{"name fragment": "ram"}` forces matching devices into a group |
 | `ram_expected` | Number of RAM sticks you have. The app rescans when fewer show up |
 | `ram_same_model` | `true` flags RAM detected as different models, a known misread on matched kits |
