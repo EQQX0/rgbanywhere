@@ -3,6 +3,7 @@ state.json
 state.json.*
 config.json
 accent_backup.json
+original.json
 rgbd.token
 logs/
 cache/

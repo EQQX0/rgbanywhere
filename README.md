@@ -1,6 +1,6 @@
 # RGB Anywhere
 
-RGB Anywhere is a Windows app that sets the color, mode and brightness of your RGB lights from one window. It groups RAM, fans and motherboard, keyboard and mouse so you can color each group, and it has a tray icon, presets, a phone and Android remote, and optional control of a DeepCool cooler screen.
+RGB Anywhere is a Windows app that sets the color, mode and brightness of your RGB lights from one window. It groups RAM, fans and case, keyboard, mouse, graphics card, audio and other devices so you can color each group, it can put your lighting back the way it was before you installed it, and it has a tray icon, presets, a phone and Android remote, and optional control of a DeepCool cooler screen.
 
 ## It bundles OpenRGB
 
@@ -59,14 +59,35 @@ To build the Android app, run `android/build.ps1`. It needs a JDK and the Androi
 
 ## How devices are grouped
 
+Every device type OpenRGB reports has a group. The app only shows the groups your PC has.
+
 | Group | Devices |
 |-------|---------|
 | ram | memory sticks |
-| fans | motherboard, LED strips, coolers, case lighting |
+| fans | motherboard, LED strips, ARGB fan hubs, coolers, case lighting |
 | keyboard | keyboards, keypads |
-| mouse | mice, mouse mats |
+| mouse | mice, mouse mats, mouse docks |
+| gpu | graphics cards |
+| audio | headsets, headset stands, speakers, microphones |
+| other | gamepads, lamps, monitors, storage, laptops and anything OpenRGB can't classify |
 
-Anything else follows the overall color. Add a device name to `group_overrides` in `config.json` to move it.
+OpenRGB files some fan hubs, docks and mats as "accessory", "light" or "unknown". For those the name decides, by whole words: "Mouse Dock" goes to mouse, "Commander Core" or "Uni Fan" to fans. Add a device name to `group_overrides` in `config.json` to move it to another group.
+
+## Your original lighting
+
+The first time RGB Anywhere finds a device, before it changes anything, it saves that device's mode, colors, brightness and speed to `original.json` in the install folder. A device you plug in later is saved the first time it is found. A device saved once is never saved again, so the file keeps what you had before RGB Anywhere.
+
+To go back, press **Original** in the app and then **Restore now**, or run `rgbctl original` (or `python rgb.py original`). Pick any color to take over again. Uninstalling restores it too, before the app is removed.
+
+Most devices can't report the colors they show. OpenRGB then reads back Direct, Static or Off with every color black, and restoring that would switch the lights off, so RGB Anywhere treats such a device as unreadable. On the PC this was tested on (Corsair DDR5, ASUS Aura board, Logitech keyboard and mouse) no device could be read. For unreadable devices, the Original window lets you choose per group what they show on Original and on uninstall:
+
+| Choice | What happens |
+|--------|--------------|
+| Leave as is (default) | RGB Anywhere hands the device back and stops changing it. It keeps its current color until its own app sets it again; the app names that app (Razer Synapse, iCUE, Armoury Crate, G HUB, ...). Open it and it puts its profile back. |
+| Built-in effect | The device's own rainbow-like effect (Spectrum Cycle, Rainbow Wave, ...), close to how most devices look out of the box. |
+| Color | A static color you pick. |
+
+From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit fans FF6000`. Devices you used with RGB Anywhere before this feature existed were saved with RGB Anywhere's colors, because those were already on them.
 
 ## config.json
 
@@ -103,10 +124,12 @@ python rgb.py --diagnose         # what was found and why things may be missing;
 ```
 rgbctl status                      # mode, color, brightness, presets, profiles, features
 rgbctl color red                   # RRGGBB, #RRGGBB or a name
-rgbctl color FF3C00 --target ram   # all (default), ram, fans, keyboard, mouse
+rgbctl color FF3C00 --target ram   # all (default), ram, fans, keyboard, mouse, gpu, audio, other
 rgbctl brightness 60
 rgbctl off                         # lights off, monitors off
 rgbctl on
+rgbctl original                    # back to the lighting from before RGB Anywhere
+rgbctl exit fans effect            # what unreadable devices show on original/uninstall: leave, effect or a color
 rgbctl presets / rgbctl preset 2
 rgbctl profiles / rgbctl profile <id>
 rgbctl monitors-off
@@ -138,6 +161,8 @@ It lists what the lighting daemon found: whether it runs as admin, whether OpenR
 | "<device> has 0 LEDs" | An addressable header with no size. Set `argb_leds` in `config.json` and press Rescan. |
 
 Logs live in `logs\`. Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
+
+Razer devices that keep their own colors are usually being driven by Razer Synapse. In Synapse, set each Razer device's lighting to Static, color black, or quit Synapse and turn it off under Task Manager > Startup apps. `--diagnose` names the RGB programs it finds running (Razer Synapse, iCUE, G HUB, Armoury Crate, SignalRGB, SteelSeries GG, NZXT CAM, L-Connect and others) and lists devices that only have effect modes, which RGB Anywhere leaves alone.
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
 

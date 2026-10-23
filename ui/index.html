@@ -212,6 +212,14 @@
   }
   .opt:has(input:checked) { border-color: var(--focus); background: var(--surface-2); }
   .opt.static { cursor: default; }
+  .exitrow { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; min-height: 46px; }
+  .exitrow select, .exitrow input[type=color] {
+    height: 40px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border-strong); color: var(--text);
+    font-size: 14px; padding: 0 10px;
+  }
+  .exitrow input[type=color] { width: 46px; padding: 3px; }
+  .exitrow input[type=color][hidden] { display: none; }
+  .note { font-size: 13px; color: var(--muted); line-height: 1.45; margin: 0; }
   .opt input { width: 20px; height: 20px; margin: 0; accent-color: var(--focus); flex: none; }
   .optsw i { width: 28px; height: 28px; border-radius: 50%; display: block; box-shadow: inset 0 0 0 1px rgba(255,255,255,.35), 0 0 0 1px rgba(0,0,0,.4); }
   .optsw i.split { background: conic-gradient(var(--a) 0 50%, var(--b) 0 100%); }
@@ -522,6 +530,7 @@
     .remote header #accentSw { order: 3; }
     .remote header #rescan { order: 4; }
     .remote header #monitorsOff { order: 5; }
+    .remote header #original { order: 6; }
     .remote header .switch, .remote header .ghost {
       flex: 1 1 calc(50% - 5px); justify-content: center; margin: 0 !important;
     }
@@ -567,6 +576,10 @@
     <button class="ghost" id="rescan" style="margin-left:0" title="A device not changing color? Restart OpenRGB and detect all devices again">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
       Rescan
+    </button>
+    <button class="ghost" id="original" style="margin-left:0" title="Put every device back the way it was before RGB Anywhere first changed it. Pick any color to take over again.">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 3v6h6"/></svg>
+      Original
     </button>
     <button class="ghost" id="monitorsOff" style="margin-left:0" title="Turn your monitors off. Move the mouse or press a key to wake them.">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
@@ -784,6 +797,21 @@
   </form>
 </div>
 
+<div class="scrim sheet" id="osheet" role="dialog" aria-modal="true" aria-labelledby="oTitle">
+  <div class="dialog">
+    <h3 id="oTitle">Original lighting</h3>
+    <p class="note">Devices whose lighting RGB Anywhere could read before it first changed them go back to it. Most
+      devices can't be read; choose what those show here. "Leave as is" hands them back to their own app
+      (Razer Synapse, iCUE, Armoury Crate, G HUB…), which puts its lighting back when you open it. Uninstalling uses
+      the same choices.</p>
+    <div class="field" id="oRows"></div>
+    <div class="foot">
+      <button type="button" class="btn" id="oCancel">Close</button>
+      <button type="button" class="btn primary" id="oGo">Restore now</button>
+    </div>
+  </div>
+</div>
+
 <div class="scrim sheet" id="prsheet" role="dialog" aria-modal="true" aria-labelledby="prTitle">
   <form class="dialog" id="prForm" autocomplete="off">
     <h3 id="prTitle">Edit profile</h3>
@@ -847,7 +875,7 @@ if (REMOTE) {
   } }) };
 }
 let S = null, presets = [], target = "all", api = null;
-const GROUP_LABELS = { ram: "RAM", fans: "Fans", keyboard: "Keyboard", mouse: "Mouse" };
+const GROUP_LABELS = { ram: "RAM", fans: "Fans & case", keyboard: "Keyboard", mouse: "Mouse", gpu: "Graphics card", audio: "Audio", other: "Other" };
 let TARGETS = [["all", "All"]], CAL_DEVICES = [];
 let FEATURES = { cooler: true, groups: Object.keys(GROUP_LABELS) };
 // What this PC actually has: the PC reports which device groups exist and whether a DeepCool cooler is installed.
@@ -856,7 +884,7 @@ function applyFeatures(f) {
   CAL_DEVICES = FEATURES.groups.filter(g => GROUP_LABELS[g]).map(g => [g, GROUP_LABELS[g]]);
   TARGETS = [["all", "All"], ...CAL_DEVICES];
   if (!TARGETS.some(t => t[0] === target)) target = "all";
-  $("targets").style.gridTemplateColumns = `repeat(${TARGETS.length}, 1fr)`;
+  $("targets").style.gridTemplateColumns = `repeat(${Math.min(TARGETS.length, 4)}, 1fr)`;  // more than 4 wrap
   $("coolerCard").hidden = !FEATURES.cooler;
   $("prNote").textContent = FEATURES.cooler ? "Colors and cooler picture together" : "Saved colors you can switch between";
   $("calOpen").hidden = CAL_DEVICES.length < 2;   // nothing to balance with a single device group
@@ -1217,6 +1245,38 @@ $("bright").addEventListener("input", e => {
 });
 $("bright").addEventListener("change", () => { if (!isOff()) toast(`Brightness ${S.brightness}%`, { key: "bright", ms: 1800 }); });
 $("rescan").onclick = () => { api.rescan(); toast("Rescanning devices…", { kind: "info", key: "rescan" }); };
+const EXIT_OPTS = [["leave", "Leave as is"], ["effect", "Built-in effect"], ["color", "Color"]];
+function exitOf(g) { const ex = S.exit || {}; return ex[g] || ex.all || "leave"; }
+function renderExit() {
+  $("oRows").innerHTML = CAL_DEVICES.map(([g, label]) => {
+    const v = exitOf(g), hex = /^[0-9A-F]{6}$/i.test(v);
+    return `<div class="exitrow"><span>${label}</span>
+      <select data-g="${g}" aria-label="${label} on exit">${EXIT_OPTS.map(([k, l]) =>
+        `<option value="${k}"${(hex ? "color" : v) === k ? " selected" : ""}>${l}</option>`).join("")}</select>
+      <input type="color" data-g="${g}" value="#${hex ? v : "FFFFFF"}"${hex ? "" : " hidden"} aria-label="${label} exit color"></div>`;
+  }).join("");
+}
+function setExit(g, v) { S.exit = { ...(S.exit || {}), [g]: v }; api.set_exit(g, v); }
+$("oRows").addEventListener("change", e => {
+  const g = e.target.dataset.g, row = e.target.closest(".exitrow"), pick = row.querySelector("input[type=color]");
+  if (e.target.tagName === "SELECT") {
+    pick.hidden = e.target.value !== "color";
+    setExit(g, e.target.value === "color" ? pick.value.slice(1).toUpperCase() : e.target.value);
+  } else {
+    setExit(g, e.target.value.slice(1).toUpperCase());
+  }
+});
+let oFrom = null;
+function closeOriginal() { $("osheet").classList.remove("on"); if (oFrom && document.body.contains(oFrom)) oFrom.focus(); }
+$("original").onclick = e => { oFrom = e.currentTarget; renderExit(); $("osheet").classList.add("on"); $("oGo").focus(); };
+$("oCancel").onclick = closeOriginal;
+$("osheet").addEventListener("keydown", e => { if (e.key === "Escape") closeOriginal(); });
+$("osheet").addEventListener("click", e => { if (e.target === $("osheet")) closeOriginal(); });
+$("oGo").onclick = () => {
+  closeOriginal();
+  S.mode = "original"; render(); api.set_mode("original");
+  toast("Original lighting back. Pick a color to take over again.", { kind: "info", key: "power" });
+};
 $("accentSw").onclick = () => {
   S.sync_accent = S.sync_accent === false; render(); api.set_sync_accent(S.sync_accent);
   toast(S.sync_accent ? "Windows accent will follow your lights" : "Windows accent sync off", { key: "accent" });

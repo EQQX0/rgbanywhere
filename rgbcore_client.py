@@ -137,6 +137,10 @@ class Client:
         self._b.rescan()
         self.update()
 
+    def restore(self, saved=None):
+        """Put the devices back the way snapshot() saw them; see SdkBackend.restore."""
+        return self._b.restore(saved)
+
 
 LOG_LEVELS = {"fatal": 0, "error": 1, "warning": 2, "info": 3, "verbose": 4, "debug": 5, "trace": 6}
 
@@ -661,6 +665,68 @@ class SdkBackend:
             return 0
         return self._call(go)
 
+    def snapshot(self):
+        """Each device's lighting as OpenRGB reports it: active mode with its colours, brightness, speed and direction,
+        and the per-LED colours. Many controllers cannot be read back, and OpenRGB then reports its defaults instead."""
+        def col(c):
+            return (c.red << 16) | (c.green << 8) | c.blue
+
+        def go(cli):
+            cli.update()
+            out = []
+            for d in cli.devices:
+                if d is None:
+                    continue
+                m = d.modes[d.active_mode] if 0 <= d.active_mode < len(d.modes) else None
+                out.append({"key": self._key(d), "name": d.name, "type": int(d.type),
+                            "mode": m.name if m else None, "color_mode": int(m.color_mode) if m else None,
+                            "mode_colors": [col(c) for c in (m.colors or [])] if m else [],
+                            "brightness": m.brightness if m else None, "speed": m.speed if m else None,
+                            "direction": m.direction if m else None, "leds": [col(c) for c in d.colors]})
+            return out
+        return self._call(go)
+
+    def restore(self, saved):
+        """Put devices back as snapshot() saw them. Returns {"restored": [...], "missing": [...], "failed": [...]} by
+        device name. A device whose saved mode is gone (another OpenRGB version renamed it) counts as failed."""
+        from openrgb.utils import ModeColors, RGBColor as ORGBColor
+
+        def conv(v):
+            return ORGBColor((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF)
+
+        def go(cli):
+            res = {"restored": [], "missing": [], "failed": []}  # here, so a retried request starts afresh
+            cli.update()
+            for s in saved:
+                name = s.get("name") or "?"
+                d = next((d for d in cli.devices if d is not None and self._key(d) == list(s.get("key") or [])), None)
+                if d is None:
+                    res["missing"].append(name)
+                    continue
+                m = next((m for m in d.modes if m.name == s.get("mode")), None)
+                if m is None:
+                    res["failed"].append(name)
+                    _log.warning("restore: %s has no mode %r any more", name, s.get("mode"))
+                    continue
+                try:
+                    if s.get("color_mode") is not None:
+                        m.color_mode = ModeColors(s["color_mode"])
+                    if s.get("mode_colors"):
+                        m.colors = [conv(v) for v in s["mode_colors"]]
+                    for f in ("brightness", "speed", "direction"):
+                        if s.get(f) is not None:
+                            setattr(m, f, s[f])
+                    self._push_mode(d, m)
+                    leds = s.get("leds") or []
+                    if m.color_mode == ModeColors.PER_LED and leds and len(leds) == len(d.leds):
+                        d._set_device_colors([conv(v) for v in leds])
+                    res["restored"].append(name)
+                except (ValueError, TypeError) as e:  # a saved value this device no longer takes
+                    res["failed"].append(name)
+                    _log.warning("restore: %s: %s: %s", name, type(e).__name__, e)
+            return res
+        return self._call(go)
+
     def debug(self):
         running = (self._proc is not None and self._proc.poll() is None) if self.spawn else None
         cli = self._cli
@@ -744,3 +810,7 @@ class RemoteBackend:
 
     def rescan(self):
         self.request("rescan")
+
+    def restore(self, saved=None):
+        """The daemon restores from its own saved copy (original.json); `saved` is for SdkBackend's signature."""
+        return self.request("restore")

@@ -28,6 +28,24 @@ CONFLICTS = {
     "armourycrate.service.exe": "ASUS Armoury Crate", "armourycrate.usersessionhelper.exe": "ASUS Armoury Crate",
     "lightingservice.exe": "ASUS Aura lighting service", "signalrgb.exe": "SignalRGB",
     "msi.centralserver.exe": "MSI Center", "rgbfusion.exe": "Gigabyte RGB Fusion",
+    # Names below come from process lists and support threads, not from a test PC; a wrong one only never matches.
+    "razerappengine.exe": "Razer Synapse", "rzappengine.exe": "Razer Synapse", "razer synapse 3.exe": "Razer Synapse",
+    "razer synapse service.exe": "Razer Synapse", "razer central.exe": "Razer Synapse",
+    "rzsdkservice.exe": "Razer Chroma SDK", "rzsdkserver.exe": "Razer Chroma SDK",
+    "steelseriesgg.exe": "SteelSeries GG", "steelseriesengine.exe": "SteelSeries GG", "nzxt cam.exe": "NZXT CAM",
+    "l-connect 3.exe": "Lian Li L-Connect", "l-connect3.exe": "Lian Li L-Connect", "masterplus.exe": "Cooler Master MasterPlus",
+    "tt rgb plus.exe": "Thermaltake TT RGB Plus", "ngenuity.exe": "HyperX NGENUITY", "awcc.exe": "Alienware Command Center",
+    "corsair.service.exe": "Corsair iCUE",
+}
+# What to do about each, beyond quitting it. Vendor apps keep pushing their own colours while they run.
+CONFLICT_FIX = {
+    "Razer Synapse": "In Synapse, set each Razer device's lighting to Static, colour black (Synapse then stops sending colours), "
+                     "or quit Synapse from the tray and turn it off in Task Manager > Startup apps.",
+    "Razer Chroma SDK": "Games and apps use it to light Razer devices; quit them, or turn off Chroma Connect in Synapse.",
+    "Corsair iCUE": "Quit it from the tray. Running it together with RGB Anywhere can knock Corsair RAM into a mode where "
+                    "it ignores colours; set icue_quit_on_close in config.json.",
+    "ASUS Armoury Crate": "Turn off its Aura Sync lighting, or quit it and its lighting service.",
+    "Logitech G HUB": "G HUB also sleeps keyboard and mouse lights when the PC is idle; see idle_rescan in config.json.",
 }
 
 
@@ -257,6 +275,12 @@ def hints(d):
     if d["conflicts"]:
         out.append("Other RGB programs are running: %s. They fight over the same devices, so colours may not stick "
                    "and devices may be missing. Quit them (also from the tray) and press Rescan." % ", ".join(d["conflicts"]))
+        out.extend("%s: %s" % (c, CONFLICT_FIX[c]) for c in d["conflicts"] if c in CONFLICT_FIX)
+    skipped = [x["name"] for x in devs if x["modes"] and not any(m["name"].lower() in ("direct", "static", "custom")
+                                                                   for m in x["modes"])]
+    if skipped:
+        out.append("%s only has effect modes (no Static or Direct), so RGB Anywhere leaves it as it is. Its colour is set "
+                   "by its own controller or vendor app." % ", ".join(skipped))
     if d["devices"] is not None and not devs and not core.get("start_error"):
         out.append("No device was found at all. OpenRGB's log lists each detector it tried.")
     for x in devs:

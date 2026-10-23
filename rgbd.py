@@ -36,6 +36,7 @@ _ready = threading.Event()  # set once the first start finished, well or not
 
 def _refresh_and_apply():
     _client.update()
+    rgb.remember_originals(_core)  # before anything here changes a device (prepare resizes headers)
     rgb.prepare(_client)
     rgb.apply(_client, rgb.load_state())
 
@@ -145,6 +146,8 @@ class Handler(socketserver.StreamRequestHandler):
                 _need_core().resize_zone(req["dev"], req["zone"], req["leds"], key=req.get("key")); res = None
             elif cmd == "rescan":
                 _rescan(); res = None
+            elif cmd == "restore":  # the saved copy lives with the daemon, so a client never sends one
+                res = _need_core().restore(rgb.restorable()[0])
             elif cmd == "busy":  # a start, rescan or re-apply is running (the app waits for a rescan to end)
                 res = _busy.locked()
             else:

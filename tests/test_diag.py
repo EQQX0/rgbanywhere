@@ -92,6 +92,14 @@ class DaemonSideTest(Base):
         self.assertIn("Fan is in mode 'Rainbow', which takes no colour", hints)
         self.assertNotIn("not running as admin", hints)
 
+    def test_effects_only_devices_and_vendor_apps_get_their_own_advice(self):
+        with mock.patch.object(diag, "_running_conflicts", lambda own=(): ["Razer Synapse", "NZXT CAM"]):
+            hints = "\n".join(diag.collect(self.core, self.client)["hints"])
+        self.assertIn("Fan only has effect modes (no Static or Direct)", hints)
+        self.assertIn("Other RGB programs are running: Razer Synapse, NZXT CAM", hints)
+        self.assertIn("Razer Synapse: In Synapse, set each Razer device's lighting to Static", hints)
+        self.assertNotIn("NZXT CAM:", hints)  # no specific advice: quitting it is enough
+
     def test_no_logs_yet_and_not_elevated(self):
         with mock.patch.object(rgb, "is_elevated", lambda: False):
             d = diag.collect(self.core, self.client)

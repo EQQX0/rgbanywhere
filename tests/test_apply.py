@@ -78,6 +78,80 @@ class Through:
         self.assertEqual(aura.set_color(rc.RGBColor(1, 2, 3)), 0)
         self.assertEqual(colours(self.srv.devices[4]), [(1, 2, 3)] * 30)
 
+    def test_original_lighting_is_saved_once_and_restored(self):
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            with self.srv.guard:  # what the devices showed before RGB Anywhere
+                self.srv.devices[0].modes[1].colors = [u.RGBColor(255, 0, 0)]
+                self.srv.devices[1].colors = [u.RGBColor(0, 255, 0)] * 4
+            self.assertEqual(rgb.remember_originals(self.backend), 5)
+            self.assertEqual(self.apply(color="0000FF"), 0)
+            self.assertEqual(colours(self.srv.devices[1]), [(0, 0, 255)] * 4)
+            self.assertEqual(rgb.remember_originals(self.backend), 0)  # never overwritten with our own colours
+            self.assertEqual(self.apply(mode="original"), 0)
+        d = self.srv.devices
+        self.assertEqual((d[0].active_mode, mode_colours(d[0].modes[1])), (1, [(255, 0, 0)]))
+        self.assertEqual(colours(d[1]), [(0, 255, 0)] * 4)
+        self.assertEqual(d[2].active_mode, 0)  # the effects-only fan was never touched
+
+    def test_a_device_plugged_in_later_is_saved_before_its_first_colour(self):
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            rgb.remember_originals(self.backend)
+            with self.srv.guard:
+                self.srv.devices.append(st.device("Late Mouse", u.DeviceType.MOUSE, [st.mode(0, "Direct",
+                                        u.ModeFlags.HAS_PER_LED_COLOR, u.ModeColors.PER_LED)], 0, 2, location="usb9"))
+            self.assertEqual(rgb.remember_originals(self.backend), 1)
+            self.assertEqual([s["name"] for s in rgb.load_originals()][-1], "Late Mouse")
+
+    def test_a_blank_reading_is_never_restored(self):
+        """Most controllers can't be read back: OpenRGB reports Direct or Off with every colour black. Restoring that
+        switched the lights off on a real PC, so such devices are left as they are."""
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            rgb.remember_originals(self.backend)  # the stub's devices start black, as OpenRGB reports unreadable ones
+            ok, unknown = rgb.restorable()
+            self.assertIn("Keyboard", [s["name"] for s in unknown])
+            self.assertIn("Fan", [s["name"] for s in ok])  # Rainbow takes no colour: a real reading
+            self.assertEqual(self.apply(color="00FF00"), 0)
+            self.assertEqual(self.apply(mode="original"), 0)
+        self.assertEqual(colours(self.srv.devices[1]), [(0, 255, 0)] * 4)  # kept, not blacked out
+
+    def test_unreadable_devices_get_their_exit_choice_or_are_handed_back(self):
+        path = os.path.join(self.tmp.name, "original.json")
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            rgb.remember_originals(self.backend)  # Board, Keyboard and Aura read back black: unreadable
+            self.assertEqual(self.apply(color="00FF00"), 0)
+            exit_ = {"fans": "FF0000", "keyboard": "leave"}  # Board and Aura are fans; Keyboard is handed back
+            self.assertEqual(self.apply(mode="original", exit=exit_), 0)
+        d = self.srv.devices
+        self.assertEqual(mode_colours(d[0].modes[1]), [(255, 0, 0)])  # Board: Static, its exit colour
+        self.assertEqual(colours(d[1]), [(0, 255, 0)] * 4)  # Keyboard: left as it was
+        done = rgb.LAST_RESTORE
+        self.assertIn("Board", done["colored"])
+        self.assertEqual([h["name"] for h in done["handed_back"]], ["Keyboard"])
+        self.assertIn("Fan", done["restored"])
+
+    def test_effect_on_exit_and_the_hand_back_message(self):
+        path = os.path.join(self.tmp.name, "original.json")
+        with self.srv.guard:
+            self.srv.devices[1].metadata.vendor = "Corsair"  # the keyboard
+            self.srv.devices[1].modes.append(st.rainbow(1))
+        self.client.update()
+        with mock.patch.object(rgb, "ORIGINAL", path):
+            rgb.remember_originals(self.backend)
+            self.assertEqual(self.apply(mode="original", exit={"keyboard": "effect"}), 0)
+            self.assertEqual(self.srv.devices[1].active_mode, 1)  # Rainbow
+            self.assertEqual(self.apply(mode="original", exit={"all": "leave"}), 0)
+        msg = rgb.handback_message()
+        self.assertIn("couldn't be read", msg)
+        self.assertIn("Corsair iCUE", msg)
+
+    def test_restore_without_a_saved_copy_changes_nothing(self):
+        with mock.patch.object(rgb, "ORIGINAL", os.path.join(self.tmp.name, "none.json")):
+            self.assertEqual(self.apply(mode="original"), 0)
+        self.assertEqual(colours(self.srv.devices[1]), [(0, 0, 0)] * 4)
+
     def test_a_failing_device_does_not_stop_the_others(self):
         with self.srv.guard:
             self.srv.devices[0].active_mode = 9  # no such mode: set_colors refuses this device
