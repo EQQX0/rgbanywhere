@@ -19,7 +19,8 @@ class DaemonLogicTest(unittest.TestCase):
         for obj, name, value in ((rgbd, "_core", None), (rgbd, "_client", None), (rgbd, "_start_error", None),
                                  (rgb, "stop_helper", lambda: False), (rgb, "start_helper", lambda: None),
                                  (rgb, "start_pawnio", lambda: False),
-                                 (rgbd, "_log_diagnosis", lambda: None), (rgbd, "time", mock.Mock())):
+                                 (rgbd, "_log_diagnosis", lambda: None), (rgbd, "time", mock.Mock()),
+                                 (rgbd, "_revive_failed", 0.0)):
             p = mock.patch.object(obj, name, value)
             p.start()
             self.addCleanup(p.stop)
@@ -90,6 +91,17 @@ class DaemonLogicTest(unittest.TestCase):
             rgbd._start_core()
             rgbd._rescan()
         self.assertEqual(order, ["pawnio", "openrgb", "pawnio", "rescan"])
+
+    def test_failed_revive_is_not_repeated_by_the_follow_up_rescans(self):
+        core = mock.Mock()
+        core.devices.return_value = []
+        revive = mock.Mock(return_value=True)
+        with mock.patch.object(rgbd, "_core", core), mock.patch.object(rgbd, "_client", rc.Client(core)),                 mock.patch.object(rgb, "ram_problem", lambda client: "2 of 4 sticks"),                 mock.patch.object(rgb, "switch_ram_to_application", revive):
+            for now in (1000, 1030, 1000 + rgbd.REVIVE_PAUSE + 1):
+                rgbd.time.time.return_value = now
+                rgbd._rescan()
+        self.assertEqual(revive.call_count, 2)  # the second rescan skipped it; the third, after the pause, tried again
+        self.assertEqual(self.applied, [1, 1, 1])
 
     def test_after_restart_reapplies_in_a_thread(self):
         threads = []

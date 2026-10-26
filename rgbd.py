@@ -32,6 +32,8 @@ _token = ""
 _busy = threading.Lock()  # one rescan at a time
 _start_error = None  # why OpenRGB did not start; requests report it until a rescan starts it
 _ready = threading.Event()  # set once the first start finished, well or not
+_revive_failed = 0.0  # when the last RAM revive left the RAM wrong
+REVIVE_PAUSE = 180  # the app's follow-up rescans land inside this; they would only fail the same way, slowly
 
 
 def _refresh_and_apply():
@@ -90,6 +92,7 @@ def _after_restart():
 
 
 def _rescan():
+    global _revive_failed
     with _busy:
         helper = rgb.stop_helper()  # the cooler's sensor service disturbs RAM detection
         try:
@@ -104,7 +107,10 @@ def _rescan():
             _client.update()
             _log_diagnosis()
             problem = rgb.ram_problem(_client)
-            if problem and rgb.CFG.get("revive_ram", True):
+            if problem and rgb.CFG.get("revive_ram", True) and time.time() - _revive_failed < REVIVE_PAUSE:
+                _log.info("RAM came up wrong (%s); a revive failed %.0fs ago, so not trying one again yet", problem,
+                          time.time() - _revive_failed)
+            elif problem and rgb.CFG.get("revive_ram", True):
                 _log.warning("RAM came up wrong (%s); trying to revive it through iCUE and the Corsair service", problem)
                 _core.shutdown()  # OpenRGB and Corsair's service must never talk to the RAM at once
                 if rgb.switch_ram_to_application():
@@ -112,7 +118,9 @@ def _rescan():
                     time.sleep(1)
                     _client.update()
                     _log_diagnosis()
-                    _log.info("RAM after the revive: %s", rgb.ram_problem(_client) or "right")
+                    still = rgb.ram_problem(_client)
+                    _log.info("RAM after the revive: %s", still or "right")
+                    _revive_failed = time.time() if still else 0.0
                 else:
                     _core.rescan()  # nothing to switch with; bring OpenRGB back as it was
                     time.sleep(1)

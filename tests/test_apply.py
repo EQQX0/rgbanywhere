@@ -362,12 +362,14 @@ class StartPawnioTest(unittest.TestCase):
 
 
 class ReviveRamTest(unittest.TestCase):
-    STUCK = ("Starting DRAM enumeration (timeout=10000ms)\n"
+    CONNECTED = 'svc.server: New client connected: "iCUE.exe"\n'
+    STUCK = (CONNECTED +
+             "Starting DRAM enumeration (timeout=10000ms)\n"
              "Detected module [0:2]: PN=CMH16GX5M2B5200C40; proto=Bootloader; assigned slot index=2\n"
              "DRAM enumeration finished. Restored timeouts to normal\n"
              "Switched dram module [0:2] to mode: Application\n")
 
-    def run_revive(self, icue_running=False, log_text=STUCK, wait=5):
+    def run_revive(self, icue_running=False, log_text=STUCK, wait=5, exited=None):
         """switch_ram_to_application() with sc, iCUE and the Corsair log replaced. Starting iCUE makes the service
         write log_text to a new log, as it does once iCUE connects. Returns (result, sc commands, fake icue, Popen)."""
         tmp = tempfile.mkdtemp()
@@ -381,6 +383,7 @@ class ReviveRamTest(unittest.TestCase):
             with open(new, "w") as f:
                 f.write(log_text)
             logs.append(new)
+            return mock.Mock(**{"poll.return_value": exited})
         ran = []
         icue = mock.Mock(**{"running.return_value": icue_running})
         popen = mock.Mock(side_effect=started)
@@ -397,7 +400,8 @@ class ReviveRamTest(unittest.TestCase):
             ok, ran, icue, popen = self.run_revive()
         self.assertTrue(ok)
         self.assertEqual(ran, [("sc", "start", rgb.CORSAIR_SERVICE)])
-        self.assertIn("--autorun", popen.call_args.args[0])
+        self.assertNotIn("--autorun", popen.call_args.args[0])  # with "start on startup" off, iCUE quits on it
+        self.assertEqual(popen.call_args.kwargs["startupinfo"].wShowWindow, 7)  # minimized, no focus
         icue.quit_icue.assert_called_once()
         self.assertEqual(event.call_args.kwargs["stuck"], 1)
         self.assertEqual(event.call_args.kwargs["switched"], 1)
@@ -416,6 +420,29 @@ class ReviveRamTest(unittest.TestCase):
         self.assertTrue(ok)
         icue.quit_icue.assert_called_once()
         self.assertFalse(event.call_args.kwargs["ok"])
+
+
+    def test_icue_that_quits_is_given_up_on_at_once(self):
+        with mock.patch.object(rgb.applog, "event") as event:
+            ok, _, icue, _ = self.run_revive(log_text="Service started\n", exited=0, wait=30)
+        self.assertTrue(ok)
+        icue.quit_icue.assert_called_once()
+        self.assertFalse(event.call_args.kwargs["ok"])
+        self.assertIn("quit", event.call_args.kwargs["error"])
+        self.assertLess(event.call_args.kwargs["seconds"], 5)
+
+    def test_icue_that_never_connects_is_given_up_on(self):
+        with mock.patch.object(rgb.applog, "event") as event:
+            ok, _, icue, _ = self.run_revive(log_text="Service started\n", wait=0.3)
+        icue.quit_icue.assert_called_once()
+        self.assertFalse(event.call_args.kwargs["ok"])
+        self.assertIn("didn't connect", event.call_args.kwargs["error"])
+
+    def test_no_enumeration_is_not_a_success(self):
+        with mock.patch.object(rgb.applog, "event") as event:
+            self.run_revive(log_text=self.CONNECTED, wait=0.3)
+        self.assertFalse(event.call_args.kwargs["ok"])  # nothing stuck and nothing switched, but nothing looked either
+        self.assertNotIn("error", event.call_args.kwargs)
 
 
 class RulesTest(unittest.TestCase):

@@ -673,9 +673,15 @@ def switch_ram_to_application(wait=60):
         return False
     t0 = time.time()
     switched = stuck = 0
+    connected = enumerated = False
+    gave_up = None
     try:
-        # --autorun: how Windows starts it at sign-in, to the tray instead of a window
-        subprocess.Popen([exe, "--autorun"], cwd=os.path.dirname(exe), creationflags=0x00000008)  # DETACHED_PROCESS
+        # Plain start, minimized without focus. Not --autorun, the sign-in start: with iCUE's "start on startup" off it
+        # quits at once and never connects to the service.
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= 1  # STARTF_USESHOWWINDOW
+        si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+        proc = subprocess.Popen([exe], cwd=os.path.dirname(exe), creationflags=0x00000008, startupinfo=si)  # DETACHED
         while time.time() - t0 < wait:
             time.sleep(1)
             path, size = _corsair_log()
@@ -686,24 +692,39 @@ def switch_ram_to_application(wait=60):
                     with open(path, "rb") as f:
                         f.seek(offset)
                         text = f.read().decode("utf-8", "ignore")
+                    connected = "New client connected" in text
+                    enumerated = "DRAM enumeration finished" in text
                     switched = text.count("to mode: Application")
                     stuck = len(set(re.findall(r"Detected module (\S+).*proto=Bootloader", text)))
-                    if "DRAM enumeration finished" in text and switched >= stuck:
+                    if enumerated and switched >= stuck:
                         time.sleep(2)  # let the last switch finish
                         break
                 except OSError:
                     pass
+            if not connected:  # nothing will happen without iCUE: don't sit out the whole wait
+                if proc.poll() is not None and not icue.running():
+                    gave_up = "iCUE quit before it connected to the service"
+                elif time.time() - t0 > min(30, wait):
+                    gave_up = "iCUE didn't connect to the service within %ds" % min(30, wait)
+                if gave_up:
+                    break
     except OSError as e:
-        _log.warning("couldn't start iCUE (%s): %s", exe, e)
+        gave_up = "couldn't start iCUE: %s" % e
     finally:
         icue.quit_icue()  # ends iCUE and stops the services it started
         t1 = time.time()
         while service_state(CORSAIR_SERVICE) not in ("STOPPED", None) and time.time() - t1 < 15:
             time.sleep(0.5)
         time.sleep(3)  # let it let go of the SMBus
-    _log.info("%s and iCUE ran %.0fs to revive the RAM; %d stick(s) in bootloader mode, %d switched to Application mode",
-              CORSAIR_SERVICE, time.time() - t0, stuck, switched)
-    applog.event("ram_revive", ok=switched >= stuck, stuck=stuck, switched=switched, seconds=round(time.time() - t0))
+    ok = enumerated and switched >= stuck
+    if gave_up:
+        _log.warning("RAM revive gave up after %.0fs: %s (%s)", time.time() - t0, gave_up, exe)
+    else:
+        _log.info("%s and iCUE ran %.0fs to revive the RAM; %d stick(s) in bootloader mode, %d switched to Application "
+                  "mode%s", CORSAIR_SERVICE, time.time() - t0, stuck, switched, "" if enumerated else
+                  "; the service never finished looking at the RAM")
+    applog.event("ram_revive", ok=ok, stuck=stuck, switched=switched, seconds=round(time.time() - t0),
+                 **({"error": gave_up} if gave_up else {}))
     return True
 
 
