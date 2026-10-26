@@ -446,12 +446,12 @@
   .diagsum b { font-weight: 600; }
   .diagpath { font: 500 12px "Cascadia Mono", Consolas, monospace; color: #c4c4cf; word-break: break-all; }
   .diaglist { max-height: 230px; overflow: auto; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); padding: 6px; font: 12px/1.45 "Cascadia Mono", Consolas, monospace; user-select: text; }
-  .diaglist .ev { display: grid; grid-template-columns: 58px 8px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; align-items: baseline; }
+  .diaglist .ev { display: grid; grid-template-columns: 84px 8px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; align-items: baseline; }
   .diaglist .ev:hover { background: var(--surface-2); }
   .diaglist .ev i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: block; align-self: center; }
   .diaglist .ev.bad i { background: var(--bad); }
   .diaglist .ev.bad .what { color: #ffb4b4; }
-  .diaglist .ev .when { color: var(--faint); }
+  .diaglist .ev .when { color: var(--faint); text-align: right; }
   .diaglist .ev .what { white-space: pre-wrap; word-break: break-word; }
   .diaglist .empty { padding: 10px; color: var(--faint); }
   .switchrow .btn { height: 34px; padding: 0 14px; font-size: 13px; flex: none; }
@@ -1461,6 +1461,11 @@ const evText = e => {
   else if (e.ms) bits.push((e.ms / 1000).toFixed(1) + "s");
   return bits.join("  ·  ");
 };
+// "2026-10-26T23:31:33.120" -> "11:31:33 PM", read straight from the text so the time zone can't shift it
+const clock = t => {
+  const h = +t.slice(11, 13);
+  return `${h % 12 || 12}${t.slice(13, 19)} ${h < 12 ? "AM" : "PM"}`;
+};
 async function loadDiag() {
   const d = await api.diag_info(), s = d.summary;
   $("diagPath").textContent = d.dir;
@@ -1469,7 +1474,7 @@ async function loadDiag() {
     ? `<b>${s.failed} of ${s.total}</b> recorded actions failed in the last 24 hours.<br>Latest: ${esc(s.last_error)}`
     : s.total ? `<b>No problems</b> in the last 24 hours (${s.total} actions recorded).` : "Nothing recorded yet today.";
   $("diagList").innerHTML = d.recent.length
-    ? d.recent.slice().reverse().map(e => `<div class="ev${e.ok ? "" : " bad"}" title="${esc(e.t)}"><span class="when">${esc(e.t.slice(11, 19))}</span><i></i><span class="what">${esc(evText(e))}</span></div>`).join("")
+    ? d.recent.slice().reverse().map(e => `<div class="ev${e.ok ? "" : " bad"}" title="${esc(e.t)}"><span class="when">${clock(e.t)}</span><i></i><span class="what">${esc(evText(e))}</span></div>`).join("")
     : '<div class="empty">No activity recorded yet.</div>';
   $("diagBtn").classList.toggle("has-errors", s.failed > 0);
   $("diagBadge").textContent = s.failed > 9 ? "9+" : s.failed;
