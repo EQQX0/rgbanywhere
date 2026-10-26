@@ -1552,17 +1552,18 @@ if (!REMOTE) { setInterval(() => { if (window.pywebview && api) loadDiag().catch
 // ---------- window look (desktop): frosted / clear / tinted / solid glass, one for focus and one for idle ----------
 const LOOKS = { frosted: [55, 26], clear: [82, 0], tinted: [60, 30], solid: [0, 0] };   // look -> [transparency %, blur px]
 const GLASS_DEFAULT = { focus: { look: "frosted", transp: 55, blur: 26 }, idle: { look: "clear", transp: 82, blur: 0 } };
-let glassOk = false;      // Windows accepted the see-through backdrop; without it the page stays solid
+let glassOk = false, winFocus = true;      // Windows accepted the see-through backdrop; without it the page stays solid
 let lookFrom = null;
 const glassNow = () => {
   const g = (S && S.glass) || {};
   return { focus: Object.assign({}, GLASS_DEFAULT.focus, g.focus), idle: Object.assign({}, GLASS_DEFAULT.idle, g.idle) };
 };
 function applyGlass() {
-  const all = glassNow(), g = document.hasFocus() ? all.focus : all.idle, r = document.documentElement;
+  const all = glassNow(), g = winFocus ? all.focus : all.idle, r = document.documentElement;
   r.classList.toggle("glass", glassOk && g.look !== "solid");
   r.dataset.look = g.look;
-  r.style.setProperty("--veil", (0.94 - g.transp * 0.0088).toFixed(3));   // 0% = nearly solid, 100% = barely tinted
+  // Clear is made see-through by the window itself (the backend fades the whole window), so the page stays solid
+  r.style.setProperty("--veil", g.look === "clear" ? ".97" : (0.94 - g.transp * 0.0088).toFixed(3));   // 0% = nearly solid, 100% = barely tinted
   r.style.setProperty("--gblur", g.blur + "px");
   document.querySelectorAll("#look .lookSec").forEach(sec => {
     const v = all[sec.dataset.state];
@@ -1583,8 +1584,7 @@ function saveGlass(all) {
     else if (r && r.ok) { glassOk = true; applyGlass(); }
   }, 60);
 }
-window.addEventListener("focus", () => applyGlass());
-window.addEventListener("blur", () => applyGlass());
+window.rgbFocus = f => { winFocus = !!f; applyGlass(); };
 window.rgbGlass = ok => { glassOk = !!ok; applyGlass(); };
 document.querySelectorAll("#look .lookSec").forEach(sec => {
   const k = sec.dataset.state, set = v => saveGlass({ ...glassNow(), [k]: { ...glassNow()[k], ...v } });

@@ -1655,6 +1655,7 @@ class App:
         log.info("window shown for the first time")
         move_to_preferred_monitor()
         style_window(color=self.state["color"])
+        _glass_state["notify"] = lambda fg: self.js("rgbFocus", fg)
         self.glass_ok = glass_window(self.window, self.state.get("glass"))
         self.tint()
         self.js("rgbGlass", self.glass_ok)  # the page may have loaded before this window existed
@@ -1818,7 +1819,7 @@ _last_tint = "2A2A33"
 
 def tint_window(hexc=None):
     """Title bar = current lighting color mixed into the page's near-black; border = the color itself.
-    In the Frosted and Clear looks the title bar is left clear so the glass runs right up to the top edge."""
+    In the Frosted and Clear looks it is a plain near-black."""
     global _last_tint
     hexc = hexc or _last_tint
     _last_tint = hexc
@@ -1830,10 +1831,9 @@ def tint_window(hexc=None):
     caption = tuple(round(b + (x - b) * 0.28) for x, b in zip(c, base))
     border = tuple(round(b + (x - b) * 0.75) for x, b in zip(c, base))
     dwm = ctypes.windll.dwmapi
-    if _glass_look in ("frosted", "clear"):
-        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(ctypes.c_uint(0xFFFFFFFE)), 4)  # DWMWA_COLOR_NONE
-    else:
-        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref(caption)), 4)  # DWMWA_CAPTION_COLOR
+    if _glass_look in ("frosted", "clear"):  # COLOR_NONE would show the Windows accent color on the focused title bar
+        caption = (14, 14, 20)
+    dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref(caption)), 4)  # DWMWA_CAPTION_COLOR
     dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(colorref(border)), 4)   # DWMWA_BORDER_COLOR
     dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(colorref((236, 236, 241))), 4)  # DWMWA_TEXT_COLOR
 
@@ -1872,16 +1872,36 @@ def _glass_alpha(g):
     return 0xFF if g["look"] == "solid" else max(0x10, round(255 * (0.94 - g["transp"] * 0.0088)))
 
 
+def _clear_opacity(g):
+    """Clear = the whole window is partly see-through (Windows turns acrylic into a flat fill once a window is idle)."""
+    return 1 - 0.65 * g["transp"] / 100
+
+
+def layered_window(hwnd, opacity):
+    """Whole-window opacity, 1.0 = normal. Drops the layered style again so a normal window costs nothing extra."""
+    u = ctypes.windll.user32
+    ex = u.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
+    if opacity >= 1:
+        if ex & 0x80000:
+            u.SetWindowLongW(hwnd, -20, ex & ~0x80000)
+        return
+    if not ex & 0x80000:
+        u.SetWindowLongW(hwnd, -20, ex | 0x80000)  # WS_EX_LAYERED
+    u.SetLayeredWindowAttributes(hwnd, 0, max(1, round(255 * opacity)), 2)  # LWA_ALPHA
+
+
 def _glass_apply(foreground, force=False):
     """Pick the Focus or Idle settings for the window's current state and push them to DWM."""
     global _glass_look
     st = _glass_state
     g = st["glass"]["focus" if foreground else "idle"]
-    key = (g["look"], _glass_alpha(g))
+    clear = g["look"] == "clear"
+    key = (g["look"], _clear_opacity(g) if clear else _glass_alpha(g))
     if force or key != st.get("key"):
         st["key"] = key
         _glass_look = g["look"]
-        accent_window(st["hwnd"], 4 if st.get("on") else 0, key[1])
+        layered_window(st["hwnd"], key[1] if clear else 1)
+        accent_window(st["hwnd"], 4 if st.get("on") and not clear else 0, _glass_alpha(g))
         tint_window(None)
 
 
@@ -1890,7 +1910,11 @@ def _glass_watch():
         time.sleep(0.12)
         try:
             if _glass_state.get("on"):
-                _glass_apply(ctypes.windll.user32.GetForegroundWindow() == _glass_state["hwnd"])
+                fg = ctypes.windll.user32.GetForegroundWindow() == _glass_state["hwnd"]
+                _glass_apply(fg)
+                if fg != _glass_state.get("fg") and _glass_state.get("notify"):  # the page can't trust document.hasFocus() in WebView2
+                    _glass_state["fg"] = fg
+                    _glass_state["notify"](fg)
         except Exception:
             log.debug("glass focus watch", exc_info=True)
 
