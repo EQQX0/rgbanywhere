@@ -594,7 +594,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       Update
     </button>
-    <button class="ghost icon" id="lookBtn" style="margin-left:0" title="Window look: frosted, clear or tinted glass" aria-label="Window look" hidden>
+    <button class="ghost icon" id="lookBtn" style="margin-left:0" title="Window look: glass for focus and idle" aria-label="Window look" hidden>
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15.5" cy="7.5" r="1"/></svg>
     </button>
     <button class="ghost icon" id="diagBtn"style="margin-left:0" title="Logs and diagnostics" aria-label="Logs and diagnostics">
@@ -728,18 +728,36 @@
 <div class="scrim" id="look" role="dialog" aria-modal="true" aria-labelledby="lookTitle">
   <div class="dialog" style="width:min(440px,calc(100vw - 24px))">
     <h3 id="lookTitle">Window look</h3>
-    <p>How see-through the window is. Frosted blurs what's behind it, Clear shows it sharp, Tinted washes it with your lighting color.</p>
-    <div class="seg" id="lookSeg" role="group" aria-label="Look" style="align-self:flex-start">
-      <button data-look="frosted" aria-pressed="true">Frosted</button>
-      <button data-look="clear" aria-pressed="false">Clear</button>
-      <button data-look="tinted" aria-pressed="false">Tinted</button>
-      <button data-look="solid" aria-pressed="false">Solid</button>
+    <p>Pick a look for when the window has focus and for when it is idle. Frosted blurs what's behind it, Clear shows it sharp, Tinted washes it with your lighting color.</p>
+    <div class="lookSec" data-state="focus" style="display:flex;flex-direction:column;gap:10px">
+      <div class="label">Focus</div>
+      <div class="seg" role="group" aria-label="Focus look" style="align-self:flex-start">
+        <button data-look="frosted" aria-pressed="false">Frosted</button>
+        <button data-look="clear" aria-pressed="false">Clear</button>
+        <button data-look="tinted" aria-pressed="false">Tinted</button>
+        <button data-look="solid" aria-pressed="false">Solid</button>
+      </div>
+      <div class="lookSliders" style="display:flex;flex-direction:column;gap:10px">
+        <div><div class="label">Transparency</div>
+          <div class="bright"><input type="range" min="0" max="100" class="lookTransp" aria-label="Focus transparency"><output>55%</output></div></div>
+        <div><div class="label">Blur</div>
+          <div class="bright"><input type="range" min="0" max="40" class="lookBlur" aria-label="Focus blur"><output>26</output></div></div>
+      </div>
     </div>
-    <div id="lookSliders" style="display:flex;flex-direction:column;gap:10px">
-      <div><div class="label">Transparency</div>
-        <div class="bright"><input type="range" min="0" max="100" id="lookTransp" aria-label="Transparency"><output id="lookTranspOut">55%</output></div></div>
-      <div><div class="label">Blur</div>
-        <div class="bright"><input type="range" min="0" max="40" id="lookBlur" aria-label="Blur"><output id="lookBlurOut">26</output></div></div>
+    <div class="lookSec" data-state="idle" style="display:flex;flex-direction:column;gap:10px">
+      <div class="label">Idle</div>
+      <div class="seg" role="group" aria-label="Idle look" style="align-self:flex-start">
+        <button data-look="frosted" aria-pressed="false">Frosted</button>
+        <button data-look="clear" aria-pressed="false">Clear</button>
+        <button data-look="tinted" aria-pressed="false">Tinted</button>
+        <button data-look="solid" aria-pressed="false">Solid</button>
+      </div>
+      <div class="lookSliders" style="display:flex;flex-direction:column;gap:10px">
+        <div><div class="label">Transparency</div>
+          <div class="bright"><input type="range" min="0" max="100" class="lookTransp" aria-label="Idle transparency"><output>55%</output></div></div>
+        <div><div class="label">Blur</div>
+          <div class="bright"><input type="range" min="0" max="40" class="lookBlur" aria-label="Idle blur"><output>26</output></div></div>
+      </div>
     </div>
     <div class="foot"><button class="btn primary" id="lookDone" style="flex:none;padding:0 22px">Done</button></div>
   </div>
@@ -1531,41 +1549,53 @@ $("diagReport").onclick = async () => {
 // keep the little red count on the button fresh without opening the window
 if (!REMOTE) { setInterval(() => { if (window.pywebview && api) loadDiag().catch(() => {}); }, 60000); }
 
-// ---------- window look (desktop): frosted / clear / tinted / solid glass ----------
+// ---------- window look (desktop): frosted / clear / tinted / solid glass, one for focus and one for idle ----------
 const LOOKS = { frosted: [55, 26], clear: [82, 0], tinted: [60, 30], solid: [0, 0] };   // look -> [transparency %, blur px]
+const GLASS_DEFAULT = { focus: { look: "frosted", transp: 55, blur: 26 }, idle: { look: "clear", transp: 82, blur: 0 } };
 let glassOk = false;      // Windows accepted the see-through backdrop; without it the page stays solid
 let lookFrom = null;
-const glassNow = () => Object.assign({ look: "frosted", transp: LOOKS.frosted[0], blur: LOOKS.frosted[1] }, (S && S.glass) || {});
+const glassNow = () => {
+  const g = (S && S.glass) || {};
+  return { focus: Object.assign({}, GLASS_DEFAULT.focus, g.focus), idle: Object.assign({}, GLASS_DEFAULT.idle, g.idle) };
+};
 function applyGlass() {
-  const g = glassNow(), r = document.documentElement;
-  const on = glassOk && g.look !== "solid";
-  r.classList.toggle("glass", on);
+  const all = glassNow(), g = document.hasFocus() ? all.focus : all.idle, r = document.documentElement;
+  r.classList.toggle("glass", glassOk && g.look !== "solid");
   r.dataset.look = g.look;
   r.style.setProperty("--veil", (0.94 - g.transp * 0.0088).toFixed(3));   // 0% = nearly solid, 100% = barely tinted
   r.style.setProperty("--gblur", g.blur + "px");
-  $("lookSeg").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.look === g.look));
-  $("lookTransp").value = g.transp; $("lookTranspOut").textContent = g.transp + "%";
-  $("lookBlur").value = g.blur; $("lookBlurOut").textContent = g.blur;
-  $("lookSliders").style.opacity = g.look === "solid" ? .4 : 1;
+  document.querySelectorAll("#look .lookSec").forEach(sec => {
+    const v = all[sec.dataset.state];
+    sec.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.look === v.look));
+    const [t, bl] = sec.querySelectorAll("output");
+    sec.querySelector(".lookTransp").value = v.transp; t.textContent = v.transp + "%";
+    sec.querySelector(".lookBlur").value = v.blur; bl.textContent = v.blur;
+    sec.querySelector(".lookSliders").style.opacity = v.look === "solid" ? .4 : 1;
+  });
 }
 let lookTimer = null;
-function saveGlass(g) {
-  S.glass = g; applyGlass();
+function saveGlass(all) {
+  S.glass = all; applyGlass();
   clearTimeout(lookTimer);
   lookTimer = setTimeout(async () => {
-    const r = await api.set_glass(g.look, g.transp, g.blur);
+    const r = await api.set_glass(all.focus, all.idle);
     if (r && r.ok === false) { glassOk = false; applyGlass(); toast("This version of Windows can't show the glass window", { kind: "bad", key: "glass" }); }
     else if (r && r.ok) { glassOk = true; applyGlass(); }
   }, 60);
 }
+window.addEventListener("focus", () => applyGlass());
+window.addEventListener("blur", () => applyGlass());
 window.rgbGlass = ok => { glassOk = !!ok; applyGlass(); };
-$("lookSeg").onclick = e => {
-  const b = e.target.closest("button"); if (!b) return;
-  const [transp, blur] = LOOKS[b.dataset.look];
-  saveGlass(b.dataset.look === "solid" ? { ...glassNow(), look: "solid" } : { look: b.dataset.look, transp, blur });
-};
-$("lookTransp").oninput = e => saveGlass({ ...glassNow(), transp: +e.target.value });
-$("lookBlur").oninput = e => saveGlass({ ...glassNow(), blur: +e.target.value });
+document.querySelectorAll("#look .lookSec").forEach(sec => {
+  const k = sec.dataset.state, set = v => saveGlass({ ...glassNow(), [k]: { ...glassNow()[k], ...v } });
+  sec.querySelector(".seg").onclick = e => {
+    const b = e.target.closest("button"); if (!b) return;
+    const [transp, blur] = LOOKS[b.dataset.look];
+    set(b.dataset.look === "solid" ? { look: "solid" } : { look: b.dataset.look, transp, blur });
+  };
+  sec.querySelector(".lookTransp").oninput = e => set({ transp: +e.target.value });
+  sec.querySelector(".lookBlur").oninput = e => set({ blur: +e.target.value });
+});
 const openLook = () => { lookFrom = document.activeElement; $("look").classList.add("on"); $("lookDone").focus(); };
 const closeLook = () => { $("look").classList.remove("on"); if (lookFrom) lookFrom.focus(); };
 $("lookBtn").onclick = openLook;
