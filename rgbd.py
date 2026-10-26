@@ -104,8 +104,8 @@ def _rescan():
             _client.update()
             _log_diagnosis()
             problem = rgb.ram_problem(_client)
-            if problem and rgb.CFG.get("revive_ram", False):
-                _log.warning("RAM came up wrong (%s); trying to revive it through the Corsair service", problem)
+            if problem and rgb.CFG.get("revive_ram", True):
+                _log.warning("RAM came up wrong (%s); trying to revive it through iCUE and the Corsair service", problem)
                 _core.shutdown()  # OpenRGB and Corsair's service must never talk to the RAM at once
                 if rgb.switch_ram_to_application():
                     _core.rescan()

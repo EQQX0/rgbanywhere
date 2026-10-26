@@ -5,6 +5,7 @@ the stub SDK server. Starts no OpenRGB and touches no hardware.
   python -m unittest discover -s tests -v
 """
 import os
+import sys
 import tempfile
 import threading
 import unittest
@@ -358,6 +359,63 @@ class StartPawnioTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(len(ran), 1)
         log.warning.assert_called_once()
+
+
+class ReviveRamTest(unittest.TestCase):
+    STUCK = ("Starting DRAM enumeration (timeout=10000ms)\n"
+             "Detected module [0:2]: PN=CMH16GX5M2B5200C40; proto=Bootloader; assigned slot index=2\n"
+             "DRAM enumeration finished. Restored timeouts to normal\n"
+             "Switched dram module [0:2] to mode: Application\n")
+
+    def run_revive(self, icue_running=False, log_text=STUCK, wait=5):
+        """switch_ram_to_application() with sc, iCUE and the Corsair log replaced. Starting iCUE makes the service
+        write log_text to a new log, as it does once iCUE connects. Returns (result, sc commands, fake icue, Popen)."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(tmp, ignore_errors=True))
+        old, new = os.path.join(tmp, "cdcs-old.log"), os.path.join(tmp, "cdcs-new.log")
+        with open(old, "w") as f:
+            f.write("x" * 50)  # its length must not carry over: reading the new log from byte 50 misses the stuck stick
+        logs = [old]
+
+        def started(*a, **kw):
+            with open(new, "w") as f:
+                f.write(log_text)
+            logs.append(new)
+        ran = []
+        icue = mock.Mock(**{"running.return_value": icue_running})
+        popen = mock.Mock(side_effect=started)
+        with mock.patch.dict(sys.modules, {"icue": icue}), \
+                mock.patch.object(rgb, "service_state", lambda name: "STOPPED"), \
+                mock.patch.object(rgb, "_icue_exe", lambda: os.path.join(tmp, "iCUE.exe")), \
+                mock.patch.object(rgb, "_corsair_log", lambda: (logs[-1], os.path.getsize(logs[-1]))), \
+                mock.patch.object(rgb.subprocess, "Popen", popen), mock.patch.object(rgb.time, "sleep", lambda s: None), \
+                mock.patch.object(rgb, "_quiet", lambda *cmd: ran.append(cmd) or mock.Mock(returncode=0, stdout="", stderr="")):
+            return rgb.switch_ram_to_application(wait=wait), ran, icue, popen
+
+    def test_icue_is_started_for_the_service_and_ended_after_the_switch(self):
+        with mock.patch.object(rgb.applog, "event") as event:
+            ok, ran, icue, popen = self.run_revive()
+        self.assertTrue(ok)
+        self.assertEqual(ran, [("sc", "start", rgb.CORSAIR_SERVICE)])
+        self.assertIn("--autorun", popen.call_args.args[0])
+        icue.quit_icue.assert_called_once()
+        self.assertEqual(event.call_args.kwargs["stuck"], 1)
+        self.assertEqual(event.call_args.kwargs["switched"], 1)
+        self.assertTrue(event.call_args.kwargs["ok"])
+
+    def test_icue_in_use_is_left_alone(self):
+        ok, ran, icue, popen = self.run_revive(icue_running=True)
+        self.assertFalse(ok)
+        self.assertEqual(ran, [])
+        popen.assert_not_called()
+        icue.quit_icue.assert_not_called()
+
+    def test_icue_is_ended_even_when_the_sticks_never_switch(self):
+        with mock.patch.object(rgb.applog, "event") as event:
+            ok, _, icue, _ = self.run_revive(log_text=self.STUCK.rsplit("Switched", 1)[0], wait=0.2)
+        self.assertTrue(ok)
+        icue.quit_icue.assert_called_once()
+        self.assertFalse(event.call_args.kwargs["ok"])
 
 
 class RulesTest(unittest.TestCase):

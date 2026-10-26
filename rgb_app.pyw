@@ -814,7 +814,9 @@ class App:
         self._drop_orphan_profile_files()
         self.status = ["Connecting…", "warn"]
         self.handback_told = ""  # the last "couldn't be read, open <app>" message shown
-        self.wake_armed_at = 0  # time lights+monitors went off together; 0 = not waiting for input (see wake_watch)
+        # Time lights+monitors went off together; 0 = not waiting for input (see wake_watch). Lights are only ever
+        # switched off together with the monitors, so lights saved as off still wait for input after a restart.
+        self.wake_armed_at = time.time() if self.state["mode"] == "off" else 0
         self.monitors_error = None  # outcome of the last monitors_off()
         self.test_color = None
         self.test_until = 0

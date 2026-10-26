@@ -643,50 +643,67 @@ def _corsair_log():
     return newest, os.path.getsize(newest)
 
 
-def switch_ram_to_application(wait=30):
+def _icue_exe():
+    """iCUE.exe, or None if iCUE isn't installed."""
+    import glob
+    found = glob.glob(os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Corsair", "*iCUE*", "iCUE.exe"))
+    return found[0] if found else None
+
+
+def switch_ram_to_application(wait=60):
     """Get RAM sticks out of bootloader mode. A stick that SMBus traffic clashed with falls into it and then ignores
     Direct writes (OpenRGB lists it without Direct mode, or under the wrong name); only Corsair's own service
-    switches it back. So run that service just long enough to enumerate the sticks, then stop it again.
+    switches it back, and only once iCUE connects to it: started alone it sits idle and never looks at the RAM.
+    So start the service and iCUE, wait for the service to switch the sticks, then end both again.
     OpenRGB must not be running meanwhile. Returns True if the service ran. Needs admin."""
+    import icue
     state = service_state(CORSAIR_SERVICE)
-    if state is None:
+    exe = _icue_exe()
+    if state is None or not exe:
         return False
-    if state != "STOPPED":  # iCUE (or something else) has it running: it handles the sticks itself
-        _log.info("%s is %s; not starting it to revive the RAM", CORSAIR_SERVICE, state)
+    if state != "STOPPED" or icue.running():  # iCUE is in use: it handles the sticks itself, and isn't ours to end
+        _log.info("%s is %s and iCUE %s; not reviving the RAM", CORSAIR_SERVICE, state,
+                  "is running" if icue.running() else "isn't")
         return False
-    _, offset = _corsair_log()
+    old_path, offset = _corsair_log()
     r = _quiet("sc", "start", CORSAIR_SERVICE)
     if r.returncode not in (0, 1056):
         _log.warning("couldn't start %s (exit %s): %s", CORSAIR_SERVICE, r.returncode, (r.stdout + r.stderr).strip()[:150])
         applog.event("ram_revive", ok=False, error="sc start exit %s" % r.returncode)
         return False
     t0 = time.time()
-    switched = 0
+    switched = stuck = 0
     try:
+        # --autorun: how Windows starts it at sign-in, to the tray instead of a window
+        subprocess.Popen([exe, "--autorun"], cwd=os.path.dirname(exe), creationflags=0x00000008)  # DETACHED_PROCESS
         while time.time() - t0 < wait:
             time.sleep(1)
             path, size = _corsair_log()
+            if path != old_path:  # each start of the service writes a new log
+                old_path, offset = path, 0
             if path and size > offset:
                 try:
                     with open(path, "rb") as f:
-                        f.seek(offset if offset <= size else 0)
+                        f.seek(offset)
                         text = f.read().decode("utf-8", "ignore")
                     switched = text.count("to mode: Application")
-                    if "DRAM enumeration" in text and time.time() - t0 > 6 and (
-                            "Detected module" in text and ("proto=Bootloader" not in text or switched)):
+                    stuck = len(set(re.findall(r"Detected module (\S+).*proto=Bootloader", text)))
+                    if "DRAM enumeration finished" in text and switched >= stuck:
                         time.sleep(2)  # let the last switch finish
                         break
                 except OSError:
                     pass
+    except OSError as e:
+        _log.warning("couldn't start iCUE (%s): %s", exe, e)
     finally:
-        _quiet("sc", "stop", CORSAIR_SERVICE)
+        icue.quit_icue()  # ends iCUE and stops the services it started
         t1 = time.time()
         while service_state(CORSAIR_SERVICE) not in ("STOPPED", None) and time.time() - t1 < 15:
             time.sleep(0.5)
         time.sleep(3)  # let it let go of the SMBus
-    _log.info("%s ran %.0fs to revive the RAM; switched %d stick(s) to Application mode", CORSAIR_SERVICE,
-              time.time() - t0, switched)
-    applog.event("ram_revive", ok=True, switched=switched, seconds=round(time.time() - t0))
+    _log.info("%s and iCUE ran %.0fs to revive the RAM; %d stick(s) in bootloader mode, %d switched to Application mode",
+              CORSAIR_SERVICE, time.time() - t0, stuck, switched)
+    applog.event("ram_revive", ok=switched >= stuck, stuck=stuck, switched=switched, seconds=round(time.time() - t0))
     return True
 
 

@@ -103,6 +103,7 @@ From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit f
 | `preferred_monitor` | Part of a monitor's hardware ID, such as `MSI`. The window opens on that screen |
 | `idle_rescan` | `true` rescans when you return to an idle PC (for Logitech G HUB, which sleeps keyboard and mouse lights) |
 | `icue_quit_on_close` | `true` makes iCUE's X button quit iCUE. Running iCUE together with this app can knock Corsair RAM into a state where it ignores colors |
+| `revive_ram` | `true` (default) lets Rescan fix Corsair RAM that ignores colours (a stick stuck in bootloader mode). If iCUE is installed and closed, Rescan starts it in the tray for up to a minute so Corsair's service switches the stick back, then quits it. `false` turns this off |
 | `deepcool_path` | Path to DeepCool.exe if it is not in `C:\DeepCool` |
 | `core_log_level` | How much OpenRGB logs: `info` (default), `verbose` or `debug`. `debug` lists every detector it tries. Takes effect when the lighting daemon starts |
 
