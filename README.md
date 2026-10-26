@@ -31,6 +31,8 @@ Download `RGB-Anywhere-Setup.exe` (about 87 MB) from the [latest release](https:
 
 To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. Updating from 0.2 or older moves the install from `%LOCALAPPDATA%\RGB Anywhere` to Program Files: the settings stay where they are, `config.json` and `original.json` move with the program, and the old program files are removed. (This update path has not been tried on a real PC yet.)
 
+The app looks for a newer release on GitHub when it starts and every six hours after that. When it finds one, an **Update** button shows in the header and the tray menu gets an "Update to <version>" item. Press it and the app downloads Setup to your temp folder, checks it against the SHA-256 GitHub publishes for the file and runs it. Like the zip's checksum, that catches a damaged download but not a tampered release. Diagnostics shows your version and has a **Check for updates** button. A copy run from source has no `version.txt`, so it offers no updates: use `git pull`.
+
 To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts, the install folder and your settings folder. The PawnIO driver stays, because other programs may use it.
 
 The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. When the driver is missing, Setup downloads its installer from the author's release page (github.com/namazso/PawnIO.Setup), checks the SHA-256, installs it silently and starts it. If that fails, or the driver is installed but Windows will not start it, Setup prints why and USB devices keep working. The release does not contain the driver.
@@ -104,6 +106,7 @@ From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit f
 | `idle_rescan` | `true` rescans when you return to an idle PC (for Logitech G HUB, which sleeps keyboard and mouse lights) |
 | `icue_quit_on_close` | `true` makes iCUE's X button quit iCUE. Running iCUE together with this app can knock Corsair RAM into a state where it ignores colors |
 | `revive_ram` | `true` (default) lets Rescan fix Corsair RAM that ignores colours (a stick stuck in bootloader mode). If iCUE is installed and closed, Rescan starts it in the tray for up to a minute so Corsair's service switches the stick back, then quits it. `false` turns this off |
+| `check_updates` | `true` (default) checks GitHub for a new release when the app starts and every six hours. `false` stops the automatic checks; **Check for updates** in Diagnostics still works |
 | `deepcool_path` | Path to DeepCool.exe if it is not in `C:\DeepCool` |
 | `core_log_level` | How much OpenRGB logs: `info` (default), `verbose` or `debug`. `debug` lists every detector it tries. Takes effect when the lighting daemon starts |
 
