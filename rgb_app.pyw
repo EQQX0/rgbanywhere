@@ -540,7 +540,7 @@ class Api:
     def init(self):
         a = self._app
         return {"state": a.public_state(), "presets": a.presets, "profiles": a.profiles_public(), "status": a.status,
-                "cooler": a.cooler_info(), "features": a.features()}
+                "cooler": a.cooler_info(), "features": a.features(), "glass_ok": a.glass_ok}
 
     def set_color(self, target, hexc):
         s = self._app.state
@@ -694,6 +694,15 @@ class Api:
         rgb.save_state(a.state)
         applog.event("phone_token_rotated", ok=True)
         return self.phone_info()
+
+    def set_glass(self, look, transp, blur):
+        """The Look dialog: window glass style plus its two sliders. Desktop only (not in PHONE_METHODS)."""
+        a = self._app
+        a.state["glass"] = g = clean_glass({"look": look, "transp": transp, "blur": blur})
+        rgb.save_state(a.state)
+        a.glass_ok = glass_window(a.window, g)
+        a.tint()
+        return {"ok": a.glass_ok or g["look"] == "solid"}
 
     def set_sync_accent(self, on):
         a = self._app
@@ -849,6 +858,8 @@ class App:
         self.busy_text = ""
         self.last_msg = ["", ""]
         self.state.setdefault("sync_accent", True)
+        self.state["glass"] = clean_glass(self.state.get("glass"))
+        self.glass_ok = False  # set once the window exists and Windows accepted the see-through backdrop
         self.accent_timer = None
         if not os.path.exists(ACCENT_BACKUP):
             with open(ACCENT_BACKUP, "w") as f:
@@ -1644,7 +1655,9 @@ class App:
         log.info("window shown for the first time")
         move_to_preferred_monitor()
         style_window(color=self.state["color"])
+        self.glass_ok = glass_window(self.window, self.state.get("glass"))
         self.tint()
+        self.js("rgbGlass", self.glass_ok)  # the page may have loaded before this window existed
 
     def on_closing(self):
         if self.quitting:
@@ -1800,8 +1813,15 @@ def colorref(rgb_tuple):
     return ctypes.c_int(r | (g << 8) | (b << 16))  # COLORREF is 0x00BBGGRR
 
 
-def tint_window(hexc):
-    """Title bar = current lighting color mixed into the page's near-black; border = the color itself."""
+_last_tint = "2A2A33"
+
+
+def tint_window(hexc=None):
+    """Title bar = current lighting color mixed into the page's near-black; border = the color itself.
+    In the Frosted and Clear looks the title bar is left clear so the glass runs right up to the top edge."""
+    global _last_tint
+    hexc = hexc or _last_tint
+    _last_tint = hexc
     hwnd = ctypes.windll.user32.FindWindowW(None, TITLE)
     if not hwnd:
         return
@@ -1810,9 +1830,72 @@ def tint_window(hexc):
     caption = tuple(round(b + (x - b) * 0.28) for x, b in zip(c, base))
     border = tuple(round(b + (x - b) * 0.75) for x, b in zip(c, base))
     dwm = ctypes.windll.dwmapi
-    dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref(caption)), 4)  # DWMWA_CAPTION_COLOR
+    if _glass_look in ("frosted", "clear"):
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(ctypes.c_uint(0xFFFFFFFE)), 4)  # DWMWA_COLOR_NONE
+    else:
+        dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref(caption)), 4)  # DWMWA_CAPTION_COLOR
     dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(colorref(border)), 4)   # DWMWA_BORDER_COLOR
     dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(colorref((236, 236, 241))), 4)  # DWMWA_TEXT_COLOR
+
+
+class _Margins(ctypes.Structure):
+    _fields_ = [("l", ctypes.c_int), ("r", ctypes.c_int), ("t", ctypes.c_int), ("b", ctypes.c_int)]
+
+
+GLASS_LOOKS = ("frosted", "clear", "tinted", "solid")
+GLASS_DEFAULT = {"look": "frosted", "transp": 55, "blur": 26}
+GLASS_LOOK_DEFAULTS = {"frosted": (55, 26), "clear": (82, 0), "tinted": (60, 30), "solid": (0, 0)}
+_glass_look = "solid"  # what the window frame currently shows; tint_window reads it
+
+
+def clean_glass(g):
+    """Whatever came from state.json or the page, as a valid {look, transp 0-100, blur 0-40}."""
+    g = g if isinstance(g, dict) else {}
+    look = g.get("look") if g.get("look") in GLASS_LOOKS else GLASS_DEFAULT["look"]
+    try:
+        transp = min(100, max(0, int(g.get("transp", GLASS_DEFAULT["transp"]))))
+        blur = min(40, max(0, int(g.get("blur", GLASS_DEFAULT["blur"]))))
+    except (TypeError, ValueError):
+        transp, blur = GLASS_DEFAULT["transp"], GLASS_DEFAULT["blur"]
+    return {"look": look, "transp": transp, "blur": blur}
+
+
+def glass_window(window, glass=None):
+    """See-through window: DWM acrylic behind a transparent WebView2, so the page's own alpha decides what shows.
+    Frosted/Tinted = acrylic (blurs the desktop); Clear = no blur, the desktop shows sharp; Solid = a normal opaque window.
+    Windows 11 22H2+ has the system backdrop attribute; older builds just stay opaque (the page falls back to solid)."""
+    global _glass_look
+    glass = clean_glass(glass)
+    hwnd = ctypes.windll.user32.FindWindowW(None, TITLE)
+    if not hwnd:
+        return False
+    on = glass["look"] != "solid"
+    dwm = ctypes.windll.dwmapi
+    margins = _Margins(-1, -1, -1, -1) if on else _Margins(0, 0, 0, 0)
+    dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
+    blurred = on and glass["look"] != "clear" and glass["blur"] > 0
+    kind = ctypes.c_int(3 if blurred else 1)  # DWMSBT_TRANSIENTWINDOW (acrylic) / DWMSBT_NONE
+    hr = dwm.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(kind), 4)  # DWMWA_SYSTEMBACKDROP_TYPE
+    _glass_look = glass["look"]
+    try:
+        import clr  # noqa: F401  (pythonnet is what pywebview already runs on)
+        from System.Drawing import Color
+        form = window.native
+
+        def paint():
+            form.BackColor = Color.Black if on else Color.FromArgb(13, 13, 17)
+            form.browser.webview.DefaultBackgroundColor = Color.Transparent if on else Color.FromArgb(13, 13, 17)
+        from System import Action
+        if form.InvokeRequired:
+            form.Invoke(Action(paint))
+        else:
+            paint()
+    except Exception:
+        log.warning("could not make the web view transparent", exc_info=True)
+        return False
+    tint_window(None)
+    log.info("glass window look=%s blur=%s (backdrop hr=%s)", glass["look"], blurred, hr)
+    return hr == 0
 
 
 def style_window(front=False, color="FF3C00"):

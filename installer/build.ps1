@@ -10,7 +10,7 @@ Push-Location $here
 try {
     windres setup.rc -O coff -o setup_res.o
     if ($LASTEXITCODE) { throw 'windres failed' }
-    g++ -std=c++17 -O2 -s -static -mwindows -municode -o RGB-Anywhere-Setup.exe setup.cpp setup_res.o -lwininet -ladvapi32 -lshell32 -lcomctl32 -lole32 -luuid
+    g++ -std=c++17 -O2 -s -static -mwindows -municode -o RGB-Anywhere-Setup.exe setup.cpp setup_res.o -lwininet -ladvapi32 -lshell32 -lcomctl32 -lole32 -luuid -ldwmapi -lgdi32 -luser32
     if ($LASTEXITCODE) { throw 'g++ failed' }
     Remove-Item setup_res.o
 } finally { Pop-Location }
