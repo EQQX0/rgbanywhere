@@ -540,7 +540,7 @@ class Api:
     def init(self):
         a = self._app
         return {"state": a.public_state(), "presets": a.presets, "profiles": a.profiles_public(), "status": a.status,
-                "cooler": a.cooler_info(), "features": a.features(), "glass_ok": a.glass_ok}
+                "cooler": a.cooler_info(), "features": a.features()}
 
     def set_color(self, target, hexc):
         s = self._app.state
@@ -694,15 +694,6 @@ class Api:
         rgb.save_state(a.state)
         applog.event("phone_token_rotated", ok=True)
         return self.phone_info()
-
-    def set_glass(self, focus, idle):
-        """The Look dialog: window glass style plus two sliders, for the focused and the idle window. Desktop only (not in PHONE_METHODS)."""
-        a = self._app
-        a.state["glass"] = g = clean_glass({"focus": focus, "idle": idle})
-        rgb.save_state(a.state)
-        a.glass_ok = glass_window(a.window, g)
-        a.tint()
-        return {"ok": a.glass_ok or all(g[k]["look"] == "solid" for k in g)}
 
     def set_sync_accent(self, on):
         a = self._app
@@ -858,8 +849,6 @@ class App:
         self.busy_text = ""
         self.last_msg = ["", ""]
         self.state.setdefault("sync_accent", True)
-        self.state["glass"] = clean_glass(self.state.get("glass"))
-        self.glass_ok = False  # set once the window exists and Windows accepted the see-through backdrop
         self.accent_timer = None
         if not os.path.exists(ACCENT_BACKUP):
             with open(ACCENT_BACKUP, "w") as f:
@@ -1655,10 +1644,7 @@ class App:
         log.info("window shown for the first time")
         move_to_preferred_monitor()
         style_window(color=self.state["color"])
-        _glass_state["notify"] = lambda fg: self.js("rgbFocus", fg)
-        self.glass_ok = glass_window(self.window, self.state.get("glass"))
         self.tint()
-        self.js("rgbGlass", self.glass_ok)  # the page may have loaded before this window existed
 
     def on_closing(self):
         if self.quitting:
@@ -1814,15 +1800,8 @@ def colorref(rgb_tuple):
     return ctypes.c_int(r | (g << 8) | (b << 16))  # COLORREF is 0x00BBGGRR
 
 
-_last_tint = "2A2A33"
-
-
-def tint_window(hexc=None):
-    """Title bar = current lighting color mixed into the page's near-black; border = the color itself.
-    In the Frosted and Clear looks it is a plain near-black."""
-    global _last_tint
-    hexc = hexc or _last_tint
-    _last_tint = hexc
+def tint_window(hexc):
+    """Title bar = current lighting color mixed into the page's near-black; border = the color itself."""
     hwnd = ctypes.windll.user32.FindWindowW(None, TITLE)
     if not hwnd:
         return
@@ -1831,153 +1810,9 @@ def tint_window(hexc=None):
     caption = tuple(round(b + (x - b) * 0.28) for x, b in zip(c, base))
     border = tuple(round(b + (x - b) * 0.75) for x, b in zip(c, base))
     dwm = ctypes.windll.dwmapi
-    if _glass_look in ("frosted", "clear"):  # COLOR_NONE would show the Windows accent color on the focused title bar
-        caption = (14, 14, 20)
     dwm.DwmSetWindowAttribute(hwnd, 35, ctypes.byref(colorref(caption)), 4)  # DWMWA_CAPTION_COLOR
     dwm.DwmSetWindowAttribute(hwnd, 34, ctypes.byref(colorref(border)), 4)   # DWMWA_BORDER_COLOR
     dwm.DwmSetWindowAttribute(hwnd, 36, ctypes.byref(colorref((236, 236, 241))), 4)  # DWMWA_TEXT_COLOR
-
-
-class _Margins(ctypes.Structure):
-    _fields_ = [("l", ctypes.c_int), ("r", ctypes.c_int), ("t", ctypes.c_int), ("b", ctypes.c_int)]
-
-
-class _Accent(ctypes.Structure):
-    _fields_ = [("state", ctypes.c_int), ("flags", ctypes.c_int), ("color", ctypes.c_uint), ("anim", ctypes.c_int)]
-
-
-class _CompAttr(ctypes.Structure):
-    _fields_ = [("attr", ctypes.c_int), ("data", ctypes.c_void_p), ("size", ctypes.c_size_t)]
-
-
-def accent_window(hwnd, state, alpha=0x99):
-    """Acrylic blur-behind with our own tint (0 = off, 4 = on). Unlike the system backdrop it ignores the Windows
-    accent color, so focusing the window doesn't recolor the glass."""
-    try:
-        acc = _Accent(state, 0, (alpha << 24) | 0x0C0808, 0)  # AABBGGRR: near-black
-        data = _CompAttr(19, ctypes.cast(ctypes.byref(acc), ctypes.c_void_p), ctypes.sizeof(acc))  # WCA_ACCENT_POLICY
-        ctypes.windll.user32.SetWindowCompositionAttribute(hwnd, ctypes.byref(data))
-    except Exception:
-        log.warning("accent policy failed", exc_info=True)
-
-
-_glass_state = {}
-GLASS_LOOKS = ("frosted", "clear", "tinted", "solid")
-GLASS_DEFAULT = {"focus": {"look": "frosted", "transp": 55, "blur": 26}, "idle": {"look": "clear", "transp": 82, "blur": 0}}
-_glass_look = "solid"  # what the window frame currently shows; tint_window reads it
-
-
-def _glass_alpha(g):
-    """Acrylic tint strength for one look: the page's veil formula, so the frame matches the page; Solid is opaque."""
-    return 0xFF if g["look"] == "solid" else max(0x10, round(255 * (0.94 - g["transp"] * 0.0088)))
-
-
-def _clear_opacity(g):
-    """Clear = the whole window is partly see-through (Windows turns acrylic into a flat fill once a window is idle)."""
-    return 1 - 0.65 * g["transp"] / 100
-
-
-def layered_window(hwnd, opacity):
-    """Whole-window opacity, 1.0 = normal. Drops the layered style again so a normal window costs nothing extra."""
-    u = ctypes.windll.user32
-    ex = u.GetWindowLongW(hwnd, -20)  # GWL_EXSTYLE
-    if opacity >= 1:
-        if ex & 0x80000:
-            u.SetWindowLongW(hwnd, -20, ex & ~0x80000)
-        return
-    if not ex & 0x80000:
-        u.SetWindowLongW(hwnd, -20, ex | 0x80000)  # WS_EX_LAYERED
-    u.SetLayeredWindowAttributes(hwnd, 0, max(1, round(255 * opacity)), 2)  # LWA_ALPHA
-
-
-def _glass_apply(foreground, force=False):
-    """Pick the Focus or Idle settings for the window's current state and push them to DWM."""
-    global _glass_look
-    st = _glass_state
-    g = st["glass"]["focus" if foreground else "idle"]
-    clear = g["look"] == "clear"
-    key = (g["look"], _clear_opacity(g) if clear else _glass_alpha(g))
-    if force or key != st.get("key"):
-        st["key"] = key
-        _glass_look = g["look"]
-        layered_window(st["hwnd"], key[1] if clear else 1)
-        accent_window(st["hwnd"], 4 if st.get("on") and not clear else 0, _glass_alpha(g))
-        tint_window(None)
-
-
-def _glass_watch():
-    while True:
-        time.sleep(0.12)
-        try:
-            if _glass_state.get("on"):
-                fg = ctypes.windll.user32.GetForegroundWindow() == _glass_state["hwnd"]
-                _glass_apply(fg)
-                if fg != _glass_state.get("fg") and _glass_state.get("notify"):  # the page can't trust document.hasFocus() in WebView2
-                    _glass_state["fg"] = fg
-                    _glass_state["notify"](fg)
-        except Exception:
-            log.debug("glass focus watch", exc_info=True)
-
-
-def _clean_look(g, default):
-    g = g if isinstance(g, dict) else {}
-    look = g.get("look") if g.get("look") in GLASS_LOOKS else default["look"]
-    try:
-        transp = min(100, max(0, int(g.get("transp", default["transp"]))))
-        blur = min(40, max(0, int(g.get("blur", default["blur"]))))
-    except (TypeError, ValueError):
-        transp, blur = default["transp"], default["blur"]
-    return {"look": look, "transp": transp, "blur": blur}
-
-
-def clean_glass(g):
-    """Whatever came from state.json or the page, as {focus, idle}, each a valid {look, transp 0-100, blur 0-40}.
-    The old single-look format becomes both states (a Clear look kept its frosted focus)."""
-    g = g if isinstance(g, dict) else {}
-    if "look" in g:
-        g = {"idle": g} if g.get("look") == "clear" else {"focus": g, "idle": g}
-    return {k: _clean_look(g.get(k), GLASS_DEFAULT[k]) for k in ("focus", "idle")}
-
-
-def glass_window(window, glass=None):
-    """See-through window: DWM acrylic behind a transparent WebView2, so the page's own alpha decides what shows.
-    Frosted/Clear/Tinted = acrylic (blurs the desktop; the page's tint decides how much shows). Without a backdrop DWM paints the
-    extended frame opaque (black or the Windows accent color), so an unblurred see-through window isn't possible. Solid = a normal opaque window.
-    Windows 11 22H2+ has the system backdrop attribute; older builds just stay opaque (the page falls back to solid)."""
-    glass = clean_glass(glass)
-    hwnd = ctypes.windll.user32.FindWindowW(None, TITLE)
-    if not hwnd:
-        return False
-    on = any(glass[k]["look"] != "solid" for k in ("focus", "idle"))
-    dwm = ctypes.windll.dwmapi
-    margins = _Margins(-1, -1, -1, -1) if on else _Margins(0, 0, 0, 0)
-    dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
-    kind = ctypes.c_int(1)  # DWMSBT_NONE: the system backdrop tints itself with the Windows accent color when focused
-    hr = dwm.DwmSetWindowAttribute(hwnd, 38, ctypes.byref(kind), 4)  # DWMWA_SYSTEMBACKDROP_TYPE
-    _glass_state.update(hwnd=hwnd, glass=glass, on=on)
-    _glass_apply(ctypes.windll.user32.GetForegroundWindow() == hwnd, force=True)
-    if on and not _glass_state.get("watching"):
-        _glass_state["watching"] = True
-        threading.Thread(target=_glass_watch, daemon=True, name="glass-focus").start()
-    try:
-        import clr  # noqa: F401  (pythonnet is what pywebview already runs on)
-        from System.Drawing import Color
-        form = window.native
-
-        def paint():
-            form.BackColor = Color.Black if on else Color.FromArgb(13, 13, 17)
-            form.browser.webview.DefaultBackgroundColor = Color.Transparent if on else Color.FromArgb(13, 13, 17)
-        from System import Action
-        if form.InvokeRequired:
-            form.Invoke(Action(paint))
-        else:
-            paint()
-    except Exception:
-        log.warning("could not make the web view transparent", exc_info=True)
-        return False
-    tint_window(None)
-    log.info("glass window focus=%s idle=%s (backdrop hr=%s)", glass["focus"]["look"], glass["idle"]["look"], hr)
-    return hr == 0
 
 
 def style_window(front=False, color="FF3C00"):

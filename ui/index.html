@@ -40,20 +40,6 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; }
-  /* ---------- glass window (desktop app only; html.glass is set from JS once the backend reports a see-through window) ----------
-     --veil: how much of the page tint covers the desktop (1 = solid). --gblur: blur inside the page.
-     Looks set the defaults (data-look); the Look dialog sliders override them. */
-  html.glass { --veil: .44; --gblur: 26px; --veil-col: #08080c; --card-a: .5; }
-  html.glass[data-look="clear"] { --veil-col: #08080c; --card-a: .46; }
-  html.glass[data-look="tinted"] { --veil-col: color-mix(in srgb, var(--c-safe) 34%, #14141c); --card-a: .38; }
-  html.glass { --glass-blur: blur(var(--gblur)) saturate(160%); }
-  html.glass body { background: color-mix(in srgb, var(--veil-col) calc(var(--veil) * 100%), transparent); }
-  html.glass .backdrop { opacity: calc(.25 + var(--veil) * .6); }
-  html.glass .card { background: rgba(12, 12, 18, calc(var(--card-a) * (.45 + var(--veil)))); }
-  html.glass[data-look="tinted"] .card { background: color-mix(in srgb, var(--veil-col) calc(var(--card-a) * (.45 + var(--veil)) * 100%), transparent); }
-  html.glass .dialog { background: rgba(20, 20, 28, .86); }
-  html.glass .scrim { background: rgba(5, 5, 8, .35); }
-  @media (prefers-reduced-transparency: reduce) { html.glass { --veil: .96; } html.glass .card { background: rgba(18, 18, 24, .96); } }
   body {
     background: var(--page);
     color: var(--text);
@@ -594,10 +580,7 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
       Update
     </button>
-    <button class="ghost icon" id="lookBtn" style="margin-left:0" title="Window look: glass for focus and idle" aria-label="Window look" hidden>
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15.5" cy="7.5" r="1"/></svg>
-    </button>
-    <button class="ghost icon" id="diagBtn"style="margin-left:0" title="Logs and diagnostics" aria-label="Logs and diagnostics">
+    <button class="ghost icon" id="diagBtn" style="margin-left:0" title="Logs and diagnostics" aria-label="Logs and diagnostics">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
       <span class="badge" id="diagBadge" aria-hidden="true"></span>
     </button>
@@ -722,44 +705,6 @@
     <div class="testrow" id="calTests"></div>
     <div id="calRows" style="display:flex;flex-direction:column;gap:8px"></div>
     <div class="foot"><button class="btn primary" id="calDone" style="flex:none;padding:0 22px">Done</button></div>
-  </div>
-</div>
-
-<div class="scrim" id="look" role="dialog" aria-modal="true" aria-labelledby="lookTitle">
-  <div class="dialog" style="width:min(440px,calc(100vw - 24px))">
-    <h3 id="lookTitle">Window look</h3>
-    <p>Pick a look for when the window has focus and for when it is idle. Frosted blurs what's behind it, Clear shows it sharp, Tinted washes it with your lighting color.</p>
-    <div class="lookSec" data-state="focus" style="display:flex;flex-direction:column;gap:10px">
-      <div class="label">Focus</div>
-      <div class="seg" role="group" aria-label="Focus look" style="align-self:flex-start">
-        <button data-look="frosted" aria-pressed="false">Frosted</button>
-        <button data-look="clear" aria-pressed="false">Clear</button>
-        <button data-look="tinted" aria-pressed="false">Tinted</button>
-        <button data-look="solid" aria-pressed="false">Solid</button>
-      </div>
-      <div class="lookSliders" style="display:flex;flex-direction:column;gap:10px">
-        <div><div class="label">Transparency</div>
-          <div class="bright"><input type="range" min="0" max="100" class="lookTransp" aria-label="Focus transparency"><output>55%</output></div></div>
-        <div><div class="label">Blur</div>
-          <div class="bright"><input type="range" min="0" max="40" class="lookBlur" aria-label="Focus blur"><output>26</output></div></div>
-      </div>
-    </div>
-    <div class="lookSec" data-state="idle" style="display:flex;flex-direction:column;gap:10px">
-      <div class="label">Idle</div>
-      <div class="seg" role="group" aria-label="Idle look" style="align-self:flex-start">
-        <button data-look="frosted" aria-pressed="false">Frosted</button>
-        <button data-look="clear" aria-pressed="false">Clear</button>
-        <button data-look="tinted" aria-pressed="false">Tinted</button>
-        <button data-look="solid" aria-pressed="false">Solid</button>
-      </div>
-      <div class="lookSliders" style="display:flex;flex-direction:column;gap:10px">
-        <div><div class="label">Transparency</div>
-          <div class="bright"><input type="range" min="0" max="100" class="lookTransp" aria-label="Idle transparency"><output>55%</output></div></div>
-        <div><div class="label">Blur</div>
-          <div class="bright"><input type="range" min="0" max="40" class="lookBlur" aria-label="Idle blur"><output>26</output></div></div>
-      </div>
-    </div>
-    <div class="foot"><button class="btn primary" id="lookDone" style="flex:none;padding:0 22px">Done</button></div>
   </div>
 </div>
 
@@ -1549,60 +1494,6 @@ $("diagReport").onclick = async () => {
 // keep the little red count on the button fresh without opening the window
 if (!REMOTE) { setInterval(() => { if (window.pywebview && api) loadDiag().catch(() => {}); }, 60000); }
 
-// ---------- window look (desktop): frosted / clear / tinted / solid glass, one for focus and one for idle ----------
-const LOOKS = { frosted: [55, 26], clear: [82, 0], tinted: [60, 30], solid: [0, 0] };   // look -> [transparency %, blur px]
-const GLASS_DEFAULT = { focus: { look: "frosted", transp: 55, blur: 26 }, idle: { look: "clear", transp: 82, blur: 0 } };
-let glassOk = false, winFocus = true;      // Windows accepted the see-through backdrop; without it the page stays solid
-let lookFrom = null;
-const glassNow = () => {
-  const g = (S && S.glass) || {};
-  return { focus: Object.assign({}, GLASS_DEFAULT.focus, g.focus), idle: Object.assign({}, GLASS_DEFAULT.idle, g.idle) };
-};
-function applyGlass() {
-  const all = glassNow(), g = winFocus ? all.focus : all.idle, r = document.documentElement;
-  r.classList.toggle("glass", glassOk && g.look !== "solid");
-  r.dataset.look = g.look;
-  // Clear is made see-through by the window itself (the backend fades the whole window), so the page stays solid
-  r.style.setProperty("--veil", g.look === "clear" ? ".97" : (0.94 - g.transp * 0.0088).toFixed(3));   // 0% = nearly solid, 100% = barely tinted
-  r.style.setProperty("--gblur", g.blur + "px");
-  document.querySelectorAll("#look .lookSec").forEach(sec => {
-    const v = all[sec.dataset.state];
-    sec.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", b.dataset.look === v.look));
-    const [t, bl] = sec.querySelectorAll("output");
-    sec.querySelector(".lookTransp").value = v.transp; t.textContent = v.transp + "%";
-    sec.querySelector(".lookBlur").value = v.blur; bl.textContent = v.blur;
-    sec.querySelector(".lookSliders").style.opacity = v.look === "solid" ? .4 : 1;
-  });
-}
-let lookTimer = null;
-function saveGlass(all) {
-  S.glass = all; applyGlass();
-  clearTimeout(lookTimer);
-  lookTimer = setTimeout(async () => {
-    const r = await api.set_glass(all.focus, all.idle);
-    if (r && r.ok === false) { glassOk = false; applyGlass(); toast("This version of Windows can't show the glass window", { kind: "bad", key: "glass" }); }
-    else if (r && r.ok) { glassOk = true; applyGlass(); }
-  }, 60);
-}
-window.rgbFocus = f => { winFocus = !!f; applyGlass(); };
-window.rgbGlass = ok => { glassOk = !!ok; applyGlass(); };
-document.querySelectorAll("#look .lookSec").forEach(sec => {
-  const k = sec.dataset.state, set = v => saveGlass({ ...glassNow(), [k]: { ...glassNow()[k], ...v } });
-  sec.querySelector(".seg").onclick = e => {
-    const b = e.target.closest("button"); if (!b) return;
-    const [transp, blur] = LOOKS[b.dataset.look];
-    set(b.dataset.look === "solid" ? { look: "solid" } : { look: b.dataset.look, transp, blur });
-  };
-  sec.querySelector(".lookTransp").oninput = e => set({ transp: +e.target.value });
-  sec.querySelector(".lookBlur").oninput = e => set({ blur: +e.target.value });
-});
-const openLook = () => { lookFrom = document.activeElement; $("look").classList.add("on"); $("lookDone").focus(); };
-const closeLook = () => { $("look").classList.remove("on"); if (lookFrom) lookFrom.focus(); };
-$("lookBtn").onclick = openLook;
-$("lookDone").onclick = closeLook;
-$("look").addEventListener("keydown", e => { if (e.key === "Escape") closeLook(); });
-$("look").addEventListener("mousedown", e => { if (e.target === $("look")) closeLook(); });
-
 // ---------- updates (desktop) ----------
 // The app checks GitHub for a newer release; when there is one the Update button shows. Setup does the install.
 let upd = null;           // the last check: {current, latest, available, source, size, error}
@@ -1950,7 +1841,6 @@ window.addEventListener("pywebviewready", async () => {
   S = init.state; presets = init.presets; profiles = init.profiles || [];
   applyFeatures(init.features);
   buildStatic(); renderProfiles(); render();
-  if (!REMOTE) { $("lookBtn").hidden = false; glassOk = !!init.glass_ok; applyGlass(); }
   window.rgbStatus(init.status[0], init.status[1]);
   setCooler(init.cooler);
   if (!REMOTE) loadDiag().catch(() => {});   // shows a red count on the Logs button if something failed recently
