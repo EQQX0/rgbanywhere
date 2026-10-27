@@ -100,6 +100,17 @@ class DaemonSideTest(Base):
         self.assertIn("Razer Synapse: In Synapse, set each Razer device's lighting to Static", hints)
         self.assertNotIn("NZXT CAM:", hints)  # no specific advice: quitting it is enough
 
+    def test_no_fan_controller_is_explained(self):
+        hints = "\n".join(diag.collect(self.core, self.client)["hints"])
+        self.assertNotIn("No motherboard, fan hub", hints)  # the stub has a board and a cooler
+        with self.srv.guard:
+            del self.srv.devices[:]
+            self.srv.devices.append(st.device("Razer Viper Mini", u.DeviceType.MOUSE,
+                                              [st.mode(0, "Direct", PER_LED, u.ModeColors.PER_LED)], 0, 1))
+        self.client.update()
+        hints = "\n".join(diag.collect(self.core, self.client)["hints"])
+        self.assertIn("No motherboard, fan hub, cooler or LED strip lighting was found", hints)
+
     def test_no_logs_yet_and_not_elevated(self):
         with mock.patch.object(rgb, "is_elevated", lambda: False):
             d = diag.collect(self.core, self.client)

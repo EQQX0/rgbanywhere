@@ -7,5 +7,7 @@
   "preferred_monitor": null,
   "idle_rescan": true,
   "icue_quit_on_close": false,
+  "revive_ram": true,
+  "check_updates": true,
   "core_log_level": "info"
 }

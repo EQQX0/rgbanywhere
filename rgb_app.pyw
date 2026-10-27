@@ -39,15 +39,48 @@ sys.path.insert(0, HERE)
 import applog  # noqa: E402
 
 applog.setup("app")  # before anything else, so even a failure while starting up is recorded
+os.makedirs(applog.DATA_DIR, exist_ok=True)  # settings, tokens and caches (see applog.DATA_DIR)
+
+# Program files an install before 0.3 left in the data folder. install.ps1 (admin) moved its settings; the files are
+# removed here, as the user, because deleting in a folder a normal process controls is never done as admin.
+LEGACY_CODE_DIRS = ("python", "openrgb", "ui", "android", "installer", "__pycache__", os.path.join("cache", "core"))
+LEGACY_CODE_EXT = (".py", ".pyw", ".ps1", ".cmd", ".ico", ".exe")
+LEGACY_CODE_FILES = ("version.txt", "requirements.txt", "LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "README.md",
+                     "config.example.json", "config.json", "original.json", "rgbd.token", "install.log")
+
+
+def remove_legacy_code(data=None):
+    """Remove an old install's program files from the data folder, once the code runs from Program Files."""
+    data = data or applog.DATA_DIR
+    if not applog.PROTECTED or os.path.normcase(data) == os.path.normcase(HERE) or \
+            not os.path.isfile(os.path.join(data, "rgbd.py")):
+        return []
+    gone = []
+    for d in LEGACY_CODE_DIRS:
+        p = os.path.join(data, d)
+        if os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+            gone.append(d)
+    for name in os.listdir(data):
+        p = os.path.join(data, name)
+        if os.path.isfile(p) and (name.lower().endswith(LEGACY_CODE_EXT) or name in LEGACY_CODE_FILES):
+            try:
+                os.remove(p)
+                gone.append(name)
+            except OSError:
+                pass
+    return gone
 log = applog.get("app")
 plog = applog.get("phone")
 
 import cooler  # noqa: E402
+import handback  # noqa: E402
 import icue  # noqa: E402
 import media  # noqa: E402
 import pystray  # noqa: E402
 import qrcode  # noqa: E402
 import rgb  # noqa: E402
+import updater  # noqa: E402
 import webview  # noqa: E402
 import winaccent  # noqa: E402
 from PIL import Image  # noqa: E402
@@ -58,16 +91,16 @@ TITLE = "RGB Anywhere"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
 ICON = os.path.join(HERE, "rgb.ico")
-CACHE = os.path.join(HERE, "cache")
-ACCENT_BACKUP = os.path.join(HERE, "accent_backup.json")  # the user's Windows accent before we synced it
-PROFILES = os.path.join(HERE, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
+CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's
+ACCENT_BACKUP = os.path.join(applog.DATA_DIR, "accent_backup.json")  # the user's Windows accent before we synced it
+PROFILES = os.path.join(applog.DATA_DIR, "profiles")  # <id>.mp4 (the cooler clip, already converted) and <id>.jpg per profile
 NO_WINDOW = 0x08000000
 PREFERRED_MONITOR = rgb.CFG.get("preferred_monitor")  # config.json: open on the monitor whose hardware ID contains this (e.g. "MSI"); None = leave the window where Windows puts it
-UPLOADS = os.path.join(HERE, "cache", "uploads")
-STAGED = os.path.join(HERE, "cache", "staged")  # previews of pictures waiting in the editor
+UPLOADS = os.path.join(CACHE, "uploads")
+STAGED = os.path.join(CACHE, "staged")  # previews of pictures waiting in the editor
 PHONE_PORT = 47822
 CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 127.0.0.1 only, bearer token from control.token
-CONTROL_TOKEN = os.path.join(HERE, "control.token")
+CONTROL_TOKEN = os.path.join(applog.DATA_DIR, "control.token")
 CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
                    "rescan", "set_sync_accent", "set_exit"}
 FW_RULE = "RGB Anywhere Phone"
@@ -87,6 +120,9 @@ IDLE_AFTER = 300  # seconds without keyboard/mouse input; a rescan blinks every 
 # The price: roughly one rescan in five brings a RAM stick up missing, as the wrong model or without Direct
 # mode (something garbles OpenRGB's reads while it detects them). Set to False to stop rescanning unasked.
 IDLE_RESCAN = bool(rgb.CFG.get("idle_rescan", False))  # config.json; only useful with Logitech G HUB or similar
+CHECK_UPDATES = rgb.CFG.get("check_updates", True) is not False  # config.json: False = only the Check button asks GitHub
+UPDATE_EVERY = 6 * 3600  # seconds between checks for a new release
+UPDATE_CACHE = 3600  # seconds an answer is reused when the page asks again (reopening the window)
 UPLOAD_EXTS = {".gif", ".png", ".apng", ".jpg", ".jpeg", ".jfif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif",
                ".avif", ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".3gp"}
 PICK_TYPES = ("Pictures and videos (*.jpg;*.jpeg;*.png;*.gif;*.webp;*.heic;*.heif;*.avif;*.bmp;*.tif;*.tiff;*.jfif;"
@@ -605,6 +641,19 @@ class Api:
         applog.event("debug_report", ok=True, path=path)
         return {"path": path}
 
+    # ----- updates (desktop window only) -----
+    def check_update(self, force=False):
+        return self._app.check_update(force=bool(force))
+
+    def install_update(self):
+        return self._app.install_update()
+
+    def open_release_notes(self):
+        page = (((self._app.update_info or {}).get("release")) or {}).get("page") or ""
+        if not page.startswith(updater.PAGES):  # only ever a GitHub release page of this project
+            page = updater.PAGES + "latest"
+        os.startfile(page)
+
     # ----- phone access (desktop window only) -----
     def phone_info(self):
         a = self._app
@@ -782,7 +831,9 @@ class App:
         self._drop_orphan_profile_files()
         self.status = ["Connecting…", "warn"]
         self.handback_told = ""  # the last "couldn't be read, open <app>" message shown
-        self.wake_armed_at = 0  # time lights+monitors went off together; 0 = not waiting for input (see wake_watch)
+        # Time lights+monitors went off together; 0 = not waiting for input (see wake_watch). Lights are only ever
+        # switched off together with the monitors, so lights saved as off still wait for input after a restart.
+        self.wake_armed_at = time.time() if self.state["mode"] == "off" else 0
         self.monitors_error = None  # outcome of the last monitors_off()
         self.test_color = None
         self.test_until = 0
@@ -815,6 +866,11 @@ class App:
         self._screen_dark = None  # does the cooler show the black clip? None until first checked (see sync_screen)
         self._screen_gave_up = None  # the direction (dark or not) whose last attempt failed
         self.last_cooler = None
+        self.update_info = None  # the last updater.check() answer
+        self.update_checked = 0
+        self.update_told = None  # the version the tray and page were last told about
+        self._update_lock = threading.Lock()   # one check at a time
+        self._install_lock = threading.Lock()  # one download at a time
         self.window = None
         self.tray = None
 
@@ -1023,7 +1079,7 @@ class App:
                 failed = rgb.apply(client, st, log=self._rgb_log)
                 told = rgb.handback_message() if st.get("mode") == "original" else ""
                 if told and told != self.handback_told:  # once per visit to Original, not on every rescan
-                    self.js("rgbToast", told, "info")
+                    self.hand_back(rgb.handback_apps(), told)
                 self.handback_told = told
                 if failed:
                     # some/all devices failed: OpenRGB probably restarted (Rescan, sleep). Reconnect once and retry.
@@ -1042,6 +1098,18 @@ class App:
                 # the daemon answers with OpenRGB's start error when that is the problem (see rgbd._need_core)
                 self.set_status("OpenRGB did not start" if "OpenRGB did not start" in str(e) else
                                 "Lighting service not running", "bad")
+
+    def hand_back(self, apps, fallback):
+        """Restart the vendor apps of the devices Original handed back, so they send their own lighting again (in a
+        thread: restarting an app takes a few seconds), and tell the user what happened."""
+        def go():
+            try:
+                msg = handback.summary(handback.restart(apps)) or fallback
+            except Exception:
+                log.exception("hand back failed")
+                msg = fallback
+            self.js("rgbToast", msg, "info")
+        threading.Thread(target=go, daemon=True, name="handback").start()
 
     def idle_watch(self):
         """Rescan when the user comes back to an idle PC, to take the keyboard and mouse back (see IDLE_AFTER)."""
@@ -1082,6 +1150,80 @@ class App:
             except Exception:
                 log.exception("wake watcher hit an error (it keeps running)")
             time.sleep(0.25)
+
+    # ----- updates -----
+    def check_update(self, force=False):
+        """Is a newer release out? For the page: this version, the newest one and whether to offer it. An answer is
+        reused for UPDATE_CACHE seconds; force (the Check button) always asks GitHub, even with check_updates off."""
+        if not force and not CHECK_UPDATES and self.update_info is None:
+            return {"current": updater.current(), "available": False, "source": updater.current() is None}
+        with self._update_lock:
+            if force or self.update_info is None or time.time() - self.update_checked > UPDATE_CACHE:
+                try:
+                    self.update_info = updater.check()
+                    self.update_checked = time.time()
+                except Exception as e:
+                    log.info("update check failed: %s: %s", type(e).__name__, e)
+                    return dict(self._update_view(), error="Couldn't reach GitHub. Check the internet connection.")
+            view = self._update_view()
+            if view["available"] and view["latest"] != self.update_told:
+                self.update_told = view["latest"]
+                log.info("RGB Anywhere %s is out (this is %s)", view["latest"], view["current"])
+                if self.tray:
+                    self.tray.update_menu()  # adds "Update to <version>"
+            return view
+
+    def _update_view(self):
+        info = self.update_info or {"current": updater.current(), "available": False}
+        return {"current": info.get("current"), "latest": info.get("latest"), "available": bool(info.get("available")),
+                "source": bool(info.get("source")), "size": (info.get("release") or {}).get("size", 0)}
+
+    def update_watch(self):
+        """Look for a new release now and then. When one is out, the page shows its Update button and the tray an
+        Update item; nothing is downloaded until the user asks."""
+        time.sleep(60)  # let startup (and the lights) settle first
+        while True:
+            try:
+                info = self.check_update()  # reuses the page's answer from startup if it's fresh
+                if info["available"]:
+                    self.js("rgbUpdate", info)
+            except Exception:
+                log.exception("update watcher hit an error (it keeps running)")
+            time.sleep(UPDATE_EVERY)
+
+    def install_update(self):
+        """Download the new Setup, check it against the published SHA-256 and start it. Setup asks Windows for
+        permission, closes this app and the lighting service, installs and opens the app again. Progress goes to the
+        page as rgbUpdate({phase, percent, error})."""
+        info = self.update_info or {}
+        rel = info.get("release")
+        if not info.get("available") or not rel:
+            return {"error": "There's no update to install."}
+        if not self._install_lock.acquire(blocking=False):
+            return {"busy": True}  # a second click while the first download runs
+
+        def go():
+            try:
+                self.js("rgbUpdate", {"phase": "download", "percent": 0})
+                path = updater.download(rel, lambda p: self.js("rgbUpdate", {"phase": "download", "percent": p}))
+                log.info("starting %s for %s", path, rel["version"])
+                subprocess.Popen([path], cwd=os.path.dirname(path))
+                applog.event("update", ok=True, version=rel["version"], current=info.get("current"))
+                self.js("rgbUpdate", {"phase": "setup"})
+            except Exception as e:
+                log.warning("update to %s failed: %s: %s", rel["version"], type(e).__name__, e)
+                applog.event("update", ok=False, version=rel["version"], error="%s: %s" % (type(e).__name__, e))
+                why = str(e) if isinstance(e, ValueError) else "Couldn't download it. Check the internet connection."
+                self.js("rgbUpdate", {"phase": "error", "error": why})
+            finally:
+                self._install_lock.release()
+        threading.Thread(target=go, daemon=True, name="update").start()
+        return {"started": True}
+
+    def show_update(self):
+        """Tray: open the window with the update dialog up."""
+        self.show()
+        self.js("rgbUpdate", dict(self._update_view(), open=True))
 
     @staticmethod
     def _rgb_log(msg):
@@ -1552,6 +1694,8 @@ class App:
             yield pystray.Menu.SEPARATOR
             yield pystray.MenuItem("Open logs folder", lambda i, it: Api(self).open_logs())
             yield pystray.MenuItem("Save debug report", lambda i, it: Api(self).save_report())
+            if (self.update_info or {}).get("available"):
+                yield pystray.MenuItem("Update to %s" % self.update_info["latest"], lambda i, it: self.show_update())
             yield pystray.Menu.SEPARATOR
             yield pystray.MenuItem("Quit", lambda i, it: self.quit())
 
@@ -1720,6 +1864,13 @@ def main():
         return
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     log.info("packages: %s", "; ".join(applog._versions()))
+    try:
+        gone = remove_legacy_code()
+        if gone:
+            log.info("removed the program files of the install before 0.3 from %s: %s", applog.DATA_DIR, ", ".join(gone))
+            applog.event("legacy_cleanup", ok=True, removed=gone)
+    except Exception:
+        log.exception("could not remove the old program files from %s", applog.DATA_DIR)
 
     http = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=http.serve_forever, daemon=True, name="local-http").start()
@@ -1749,8 +1900,10 @@ def main():
         app.start_tray()
         for name, target in (("lights", app.rgb_worker), ("cooler-watch", app.cooler_watch), ("single-instance", listen),
                              ("icue-watch", functools.partial(icue.watch, app.rescan)), ("idle-watch", app.idle_watch),
-                             ("wake-watch", app.wake_watch)):
+                             ("wake-watch", app.wake_watch), ("update-watch", app.update_watch)):
             if name == "idle-watch" and not IDLE_RESCAN:
+                continue
+            if name == "update-watch" and not CHECK_UPDATES:
                 continue
             if name == "icue-watch" and not rgb.CFG.get("icue_quit_on_close", False):
                 continue

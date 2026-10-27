@@ -20,7 +20,8 @@ Every command prints one JSON object on stdout. Exit code 0 = done, 1 = the app 
   rgbctl rescan                     re-detect devices
   rgbctl describe                   machine-readable list of these commands
 
-It talks to the running app on 127.0.0.1:47824 using the token in control.token next to the app. No other dependencies.
+It talks to the running app on 127.0.0.1:47824 using the token in control.token, which the app keeps in
+%LOCALAPPDATA%\\RGB Anywhere (or next to itself in a source checkout). No other dependencies.
 """
 import argparse
 import json
@@ -72,7 +73,9 @@ def parse_color(text):
 
 
 def token():
-    path = os.environ.get("RGBCTL_TOKEN_FILE") or os.path.join(HERE, "control.token")
+    # The app writes it to the user's data folder when installed in Program Files, else next to itself (see applog)
+    local = os.path.join(os.environ.get("LOCALAPPDATA", ""), "RGB Anywhere", "control.token")
+    path = os.environ.get("RGBCTL_TOKEN_FILE") or (local if os.path.isfile(local) else os.path.join(HERE, "control.token"))
     try:
         with open(path, encoding="ascii") as f:
             return f.read().strip()

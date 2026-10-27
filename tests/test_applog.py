@@ -34,6 +34,7 @@ class ReportTest(unittest.TestCase):
             with open(os.path.join(here, "state.json"), "w") as f:
                 json.dump({"color": "FF0000", "phone_token": "secret-token-123"}, f)
             with mock.patch.object(applog, "HERE", here), mock.patch.object(applog, "LOG_DIR", logs), \
+                    mock.patch.object(applog, "DATA_DIR", here), mock.patch.object(applog, "SERVICE_LOG_DIR", logs), \
                     mock.patch.object(applog, "FAILED_DIR", os.path.join(logs, "failed")):
                 path = applog.build_report("diagnosis text")
             with zipfile.ZipFile(path) as z:
@@ -45,6 +46,27 @@ class ReportTest(unittest.TestCase):
                           "core-logs/OpenRGB_20261024_100000.log"])
         self.assertTrue({"core-config/OpenRGB.json", "core-config/Configuration.json", "diagnosis.txt"} <= names)
         self.assertNotIn("secret-token-123", settings)
+        self.assertIn('"color": "FF0000"', settings)
+        self.assertFalse([n for n in names if n.startswith("service-logs/")])  # one folder: nothing twice
+
+    def test_installed_report_has_the_daemons_logs_and_the_users_settings(self):
+        with tempfile.TemporaryDirectory() as root:
+            here, data = os.path.join(root, "pf"), os.path.join(root, "data")
+            logs, service = os.path.join(data, "logs"), os.path.join(here, "logs")
+            for d in (logs, service):
+                os.makedirs(d)
+            with open(os.path.join(service, "rgb.log"), "w") as f:
+                f.write("daemon\n")
+            with open(os.path.join(data, "state.json"), "w") as f:
+                json.dump({"color": "00FF00"}, f)
+            with mock.patch.object(applog, "HERE", here), mock.patch.object(applog, "LOG_DIR", logs), \
+                    mock.patch.object(applog, "DATA_DIR", data), mock.patch.object(applog, "SERVICE_LOG_DIR", service), \
+                    mock.patch.object(applog, "FAILED_DIR", os.path.join(logs, "failed")):
+                path = applog.build_report()
+            self.assertEqual(os.path.dirname(path), logs)  # written where the app may write
+            with zipfile.ZipFile(path) as z:
+                self.assertIn("service-logs/rgb.log", z.namelist())
+                self.assertIn('"color": "00FF00"', z.read("settings.json").decode())
 
 
 class RedactTest(unittest.TestCase):
@@ -69,6 +91,41 @@ class RedactTest(unittest.TestCase):
         self.assertIn("phone request failed", text)
         self.assertIn("OSError", text)
         self.assertNotIn("abcdefgh12345678", text)
+
+
+
+
+class FoldersTest(unittest.TestCase):
+    """Where the app, the elevated daemon and a source checkout keep their files (applog.folders)."""
+    ENV = {"ProgramFiles": "/pf", "LOCALAPPDATA": "/home/u/local"}
+    j = staticmethod(os.path.join)  # the separator differs between Windows and the rest
+
+    def test_installed_in_program_files(self):
+        j = self.j
+        here = j("/pf", "RGB Anywhere")
+        app = applog.folders(here, self.ENV, is_admin=False)
+        self.assertTrue(app["protected"])
+        data = j("/home/u/local", "RGB Anywhere")
+        self.assertEqual(app["data"], data)  # settings: the user's own folder
+        self.assertEqual(app["logs"], j(data, "logs"))
+        daemon = applog.folders(here, self.ENV, is_admin=True)
+        self.assertEqual(daemon["logs"], j(here, "logs"))  # never a folder a normal process controls
+        self.assertEqual(daemon["data"], data)  # it reads the same settings
+        self.assertEqual(app["events"], sorted([j(data, "logs", "events.jsonl"), j(here, "logs", "events.jsonl")]))
+
+    def test_source_checkout_keeps_everything_together(self):
+        here = self.j("/home/u", "src", "rgbanywhere")
+        f = applog.folders(here, self.ENV, is_admin=True)
+        self.assertFalse(f["protected"])
+        self.assertEqual((f["data"], f["logs"]), (here, self.j(here, "logs")))
+        self.assertEqual(applog.folders(here, self.ENV, is_admin=False)["logs"], self.j(here, "logs"))
+
+    def test_a_folder_that_only_starts_like_program_files_is_not_protected(self):
+        self.assertFalse(applog.folders(self.j("/pf-evil", "RGB Anywhere"), self.ENV, is_admin=True)["protected"])
+
+    def test_overrides(self):
+        f = applog.folders(self.j("/pf", "RGB Anywhere"), dict(self.ENV, RGB_DATA_DIR="/d", RGB_LOG_DIR="/l"), is_admin=True)
+        self.assertEqual((f["data"], f["logs"], f["events"]), ("/d", "/l", [self.j("/l", "events.jsonl")]))
 
 
 if __name__ == "__main__":

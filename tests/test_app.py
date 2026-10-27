@@ -61,6 +61,79 @@ class WhitelistTest(unittest.TestCase):
         for name in sorted(m.PHONE_METHODS | m.CONTROL_METHODS):
             self.assertTrue(callable(getattr(m.Api, name, None)), name)
 
+    def test_updates_stay_on_the_desktop(self):
+        """A phone or the control port must not be able to start a download and run Setup."""
+        for name in ("check_update", "install_update", "open_release_notes"):
+            self.assertNotIn(name, m.PHONE_METHODS | m.CONTROL_METHODS)
+
+
+def update_app(available=True):
+    a = bare_app()
+    a.update_info = {"current": "0.2.1", "latest": "0.3.0", "available": available,
+                     "release": {"version": "0.3.0", "page": "", "url": "https://example.invalid/s.exe",
+                                 "size": 9, "sha256": "ab" * 32}}
+    a.update_checked = time.time()
+    a.update_told = None
+    a._update_lock = threading.Lock()
+    a._install_lock = threading.Lock()
+    a.js = mock.Mock()
+    return a
+
+
+class UpdateTest(unittest.TestCase):
+    def test_nothing_to_install(self):
+        a = update_app(available=False)
+        self.assertIn("error", a.install_update())
+
+    def test_second_click_while_downloading_is_ignored(self):
+        a = update_app()
+        release = threading.Event()
+        with mock.patch.object(m.updater, "download", side_effect=lambda *_: release.wait(5) and "C:/x/Setup.exe"), \
+                mock.patch.object(m.subprocess, "Popen") as popen:
+            self.assertEqual(a.install_update(), {"started": True})
+            self.assertEqual(a.install_update(), {"busy": True})
+            release.set()
+            for _ in range(100):
+                if not a._install_lock.locked():
+                    break
+                real_sleep(0.02)
+        popen.assert_called_once()
+        a.js.assert_called_with("rgbUpdate", {"phase": "setup"})
+
+    def test_bad_checksum_reaches_the_page(self):
+        a = update_app()
+        with mock.patch.object(m.updater, "download", side_effect=ValueError("the download did not match")), \
+                mock.patch.object(m.subprocess, "Popen") as popen:
+            a.install_update()
+            for _ in range(100):
+                if not a._install_lock.locked():
+                    break
+                real_sleep(0.02)
+        popen.assert_not_called()
+        a.js.assert_called_with("rgbUpdate", {"phase": "error", "error": "the download did not match"})
+
+    def test_answer_is_reused_until_forced(self):
+        a = update_app()
+        with mock.patch.object(m.updater, "check", return_value=dict(a.update_info, latest="0.3.1")) as check:
+            self.assertEqual(a.check_update()["latest"], "0.3.0")
+            check.assert_not_called()
+            self.assertEqual(a.check_update(force=True)["latest"], "0.3.1")
+            check.assert_called_once()
+
+    def test_offline_check_says_so(self):
+        a = update_app()
+        with mock.patch.object(m.updater, "check", side_effect=OSError("no route")):
+            view = a.check_update(force=True)
+        self.assertIn("error", view)
+        self.assertTrue(view["available"])  # what it knew before still stands
+
+    def test_release_notes_open_only_this_project(self):
+        a = update_app()
+        a.update_info["release"]["page"] = "https://evil.invalid/"
+        with mock.patch.object(m.os, "startfile", create=True) as startfile:
+            m.Api(a).open_release_notes()
+        startfile.assert_called_once_with(m.updater.PAGES + "latest")
+
 
 class ApiTest(unittest.TestCase):
     def test_preset_number_out_of_range_is_refused(self):
@@ -90,6 +163,33 @@ class ApiTest(unittest.TestCase):
         a.commit = mock.Mock()
         m.Api(a, source="cli").set_mode("original")
         self.assertEqual(a.state["mode"], "original")
+
+
+class LegacyCleanupTest(unittest.TestCase):
+    def test_old_program_files_are_removed_and_settings_kept(self):
+        with tempfile.TemporaryDirectory() as data:
+            for d in ("python", "openrgb", os.path.join("cache", "core"), os.path.join("cache", "uploads"), "profiles"):
+                os.makedirs(os.path.join(data, d))
+            for f in ("rgbd.py", "rgb_app.pyw", "install.ps1", "Uninstall.exe", "rgbd.token", "config.json",
+                      "state.json", "control.token", "accent_backup.json"):
+                open(os.path.join(data, f), "w").close()
+            with mock.patch.object(m.applog, "PROTECTED", True):
+                gone = m.remove_legacy_code(data)
+            left = sorted(os.listdir(data))
+            self.assertEqual(left, ["accent_backup.json", "cache", "control.token", "profiles", "state.json"])
+            self.assertEqual(os.listdir(os.path.join(data, "cache")), ["uploads"])
+            self.assertIn("rgbd.py", gone)
+
+    def test_nothing_is_removed_from_a_source_checkout_or_a_clean_folder(self):
+        with tempfile.TemporaryDirectory() as data:
+            open(os.path.join(data, "rgbd.py"), "w").close()
+            with mock.patch.object(m.applog, "PROTECTED", False):
+                self.assertEqual(m.remove_legacy_code(data), [])
+            self.assertTrue(os.path.exists(os.path.join(data, "rgbd.py")))
+            os.remove(os.path.join(data, "rgbd.py"))
+            open(os.path.join(data, "state.json"), "w").close()
+            with mock.patch.object(m.applog, "PROTECTED", True):
+                self.assertEqual(m.remove_legacy_code(data), [])  # no rgbd.py: not an old install
 
 
 class ScreenTest(unittest.TestCase):
@@ -161,6 +261,17 @@ class WatchTest(unittest.TestCase):
             with self.assertRaises(StopLoop):
                 a.wake_watch()
         self.assertEqual(a.set_mode.call_count, 1)  # the error was logged and the loop went on to the next round
+
+    def test_lights_saved_as_off_wait_for_input_after_a_restart(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backup = os.path.join(tmp, "accent_backup.json")
+            open(backup, "w").close()
+            for mode, armed in (("off", True), ("static", False)):
+                state = {"mode": mode, "color": "0000FF", "groups": {}, "phone_token": "t" * 22}
+                with mock.patch.object(m.rgb, "load_state", return_value=state), mock.patch.object(m.rgb, "save_state"), \
+                        mock.patch.object(m.App, "_drop_orphan_profile_files"), mock.patch.object(m, "ACCENT_BACKUP", backup):
+                    a = m.App()
+                self.assertEqual(bool(a.wake_armed_at), armed, mode)
 
     def test_idle_watch_survives_an_error(self):
         a = bare_app()

@@ -25,6 +25,36 @@ if ($Quiet) {
 }
 $user = "$env:USERDOMAIN\$env:USERNAME"   # the elevated shell is still this user
 
+# 0. Where things live. The lighting daemon runs this folder's code as admin, so only admins may change it: Setup puts
+# it in Program Files. Settings, the app's logs and tokens stay in the user's folder ($data), which the daemon only reads.
+$data = Join-Path $env:LOCALAPPDATA 'RGB Anywhere'
+$protected = [bool](@($env:ProgramFiles, $env:ProgramW6432) | Where-Object { $_ -and
+        $here.StartsWith($_.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) })
+if ($protected) {
+    # Owned by Administrators, with Program Files' own permissions (admins and SYSTEM change, users read and run)
+    & icacls.exe $here /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
+    & icacls.exe $here /reset /T /C /Q | Out-Null
+    # An install before 0.3 ran from $data. Bring what the daemon owns (its settings and saved lighting) here; the
+    # settings stay there. The old code is removed by the app on its next start, without admin: deleting in a folder
+    # a normal process controls is never done as admin, where a swapped folder could make it delete elsewhere.
+    if ((Test-Path (Join-Path $data 'rgbd.py')) -and ($data -ne $here)) {
+        Write-Host "Moving the earlier install out of $data (settings stay there)"
+        foreach ($f in 'config.json', 'original.json') {
+            $src = Join-Path $data $f
+            if ((Test-Path -LiteralPath $src) -and -not (Test-Path (Join-Path $here $f))) {
+                try {
+                    $text = [IO.File]::ReadAllText($src)
+                    $text | ConvertFrom-Json | Out-Null   # only settings, nothing else, reach the admin side
+                    [IO.File]::WriteAllText((Join-Path $here $f), $text, (New-Object Text.UTF8Encoding $false))
+                } catch { Write-Warning "$f from the earlier install could not be read as JSON; not copied" }
+            }
+        }
+    }
+} else {
+    Write-Warning ("This copy is not in Program Files. The lighting service runs its code as admin from $here, which " +
+                   "programs without admin rights can change. That is fine for development; for everyday use install with Setup.")
+}
+
 # 1. Python. A release zip carries its own (python\ next to this script) with every package installed; a source checkout uses yours.
 $bundled = Join-Path $here 'python\pythonw.exe'
 if (Test-Path $bundled) {
@@ -105,7 +135,8 @@ if (-not $NoStartup) {
     Write-Host "Startup entry set"
 }
 $sc = @((Join-Path $here 'make_shortcut.py'))
-if ($Desktop) { $sc += '--desktop' }
+# a desktop shortcut from an earlier install would still point at the old folder
+if ($Desktop -or (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'RGB Anywhere.lnk'))) { $sc += '--desktop' }
 & $py @sc
 if ($LASTEXITCODE) { throw "could not create the shortcut" }
 
@@ -135,4 +166,4 @@ if ($Quiet) {
 }
 $where = if ($Desktop) { 'the desktop' } else { 'the Start menu' }
 Write-Host "`nDone. Start 'RGB Anywhere' from $where, or run:  schtasks /run /tn `"RGB Anywhere Lighting`""
-Write-Host "Optional per-PC settings (monitor, vendor workarounds, device overrides) go in config.json - see README.md."
+Write-Host "Optional per-PC settings (monitor, vendor workarounds, device overrides) go in $here\config.json - see README.md."

@@ -446,14 +446,25 @@
   .diagsum b { font-weight: 600; }
   .diagpath { font: 500 12px "Cascadia Mono", Consolas, monospace; color: #c4c4cf; word-break: break-all; }
   .diaglist { max-height: 230px; overflow: auto; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); padding: 6px; font: 12px/1.45 "Cascadia Mono", Consolas, monospace; user-select: text; }
-  .diaglist .ev { display: grid; grid-template-columns: 58px 8px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; align-items: baseline; }
+  .diaglist .ev { display: grid; grid-template-columns: 84px 8px 1fr; gap: 8px; padding: 3px 6px; border-radius: 6px; align-items: baseline; }
   .diaglist .ev:hover { background: var(--surface-2); }
   .diaglist .ev i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: block; align-self: center; }
   .diaglist .ev.bad i { background: var(--bad); }
   .diaglist .ev.bad .what { color: #ffb4b4; }
-  .diaglist .ev .when { color: var(--faint); }
+  .diaglist .ev .when { color: var(--faint); text-align: right; }
   .diaglist .ev .what { white-space: pre-wrap; word-break: break-word; }
   .diaglist .empty { padding: 10px; color: var(--faint); }
+  .switchrow .btn { height: 34px; padding: 0 14px; font-size: 13px; flex: none; }
+  .vertext { font-size: 13px; color: #c4c4cf; }
+
+  /* ---------- update (desktop) ---------- */
+  .ghost.upd { color: var(--text); border-color: rgba(157,184,255,.45); background: rgba(157,184,255,.13); }
+  .ghost.upd:hover { background: rgba(157,184,255,.22); }
+  .remote #updateBtn { display: none !important; }
+  .updprog { display: flex; align-items: center; gap: 10px; }
+  .updbar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
+  .updbar i { display: block; height: 100%; background: var(--focus); transform: scaleX(0); transform-origin: left; transition: transform .2s var(--ease); }
+  .updprog output { width: 38px; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
 
   /* ---------- phone dialog (desktop) ---------- */
   .qrwrap { display: flex; gap: 18px; align-items: center; }
@@ -565,6 +576,10 @@
     <h1>RGB Anywhere</h1>
     <div class="spacer"></div>
     <div class="pill" role="status"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></div>
+    <button class="ghost upd" id="updateBtn" style="margin-left:0" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+      Update
+    </button>
     <button class="ghost icon" id="diagBtn" style="margin-left:0" title="Logs and diagnostics" aria-label="Logs and diagnostics">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
       <span class="badge" id="diagBadge" aria-hidden="true"></span>
@@ -698,6 +713,7 @@
     <h3 id="diagTitle">Diagnostics</h3>
     <p>Everything the app does is written to log files, including attempts that failed, with the technical details.
        That makes problems possible to track down and fix later.</p>
+    <div class="switchrow"><span class="vertext" id="verText" role="status">Version</span><button class="btn" id="verCheck">Check for updates</button></div>
     <div class="diagsum" id="diagSum" role="status"></div>
     <div class="diagpath" id="diagPath"></div>
     <div class="diaglist" id="diagList" tabindex="0" aria-label="Recent activity"></div>
@@ -707,6 +723,28 @@
       <span class="edhint" id="diagMsg" style="align-self:center;text-align:left"></span>
     </div>
     <div class="foot"><button class="btn primary" id="diagDone" style="flex:none;padding:0 22px">Done</button></div>
+  </div>
+</div>
+
+<div class="scrim" id="upd" role="dialog" aria-modal="true" aria-labelledby="updTitle">
+  <div class="dialog" style="width:min(540px,calc(100vw - 24px))">
+    <h3 id="updTitle">Update RGB Anywhere</h3>
+    <p id="updWhat"></p>
+    <p>Setup downloads first (<span id="updSize">about 90 MB</span>). Windows then asks for permission once. The app
+       closes while Setup runs and opens again when it's done. Your colors, presets and profiles stay as they are.
+       The lights may blink while the lighting service restarts.</p>
+    <div class="updprog" id="updProg" hidden>
+      <div class="updbar" role="progressbar" aria-label="Download" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="updBar"><i id="updFill"></i></div>
+      <output id="updPct">0%</output>
+    </div>
+    <span class="edhint" id="updMsg" role="status" aria-live="polite" style="text-align:left"></span>
+    <div class="foot split">
+      <button class="btn" id="updNotes" title="Opens the release page on GitHub">What's new</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="updCancel">Not now</button>
+        <button class="btn primary" id="updGo" style="flex:none;padding:0 18px">Download and install</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -801,9 +839,9 @@
   <div class="dialog">
     <h3 id="oTitle">Original lighting</h3>
     <p class="note">Devices whose lighting RGB Anywhere could read before it first changed them go back to it. Most
-      devices can't be read; choose what those show here. "Leave as is" hands them back to their own app
-      (Razer Synapse, iCUE, Armoury Crate, G HUB…), which puts its lighting back when you open it. Uninstalling uses
-      the same choices.</p>
+      devices can't be read; choose what those show here. "Leave as is" hands them back: RGB Anywhere restarts their
+      own app (G HUB, iCUE, Synapse, SteelSeries GG, NZXT CAM) so it puts its lighting back. Armoury Crate and MSI
+      Center you open yourself. Uninstalling uses the same choices.</p>
     <div class="field" id="oRows"></div>
     <div class="foot">
       <button type="button" class="btn" id="oCancel">Close</button>
@@ -1423,6 +1461,11 @@ const evText = e => {
   else if (e.ms) bits.push((e.ms / 1000).toFixed(1) + "s");
   return bits.join("  ·  ");
 };
+// "2026-10-26T23:31:33.120" -> "11:31:33 PM", read straight from the text so the time zone can't shift it
+const clock = t => {
+  const h = +t.slice(11, 13);
+  return `${h % 12 || 12}${t.slice(13, 19)} ${h < 12 ? "AM" : "PM"}`;
+};
 async function loadDiag() {
   const d = await api.diag_info(), s = d.summary;
   $("diagPath").textContent = d.dir;
@@ -1431,7 +1474,7 @@ async function loadDiag() {
     ? `<b>${s.failed} of ${s.total}</b> recorded actions failed in the last 24 hours.<br>Latest: ${esc(s.last_error)}`
     : s.total ? `<b>No problems</b> in the last 24 hours (${s.total} actions recorded).` : "Nothing recorded yet today.";
   $("diagList").innerHTML = d.recent.length
-    ? d.recent.slice().reverse().map(e => `<div class="ev${e.ok ? "" : " bad"}" title="${esc(e.t)}"><span class="when">${esc(e.t.slice(11, 19))}</span><i></i><span class="what">${esc(evText(e))}</span></div>`).join("")
+    ? d.recent.slice().reverse().map(e => `<div class="ev${e.ok ? "" : " bad"}" title="${esc(e.t)}"><span class="when">${clock(e.t)}</span><i></i><span class="what">${esc(evText(e))}</span></div>`).join("")
     : '<div class="empty">No activity recorded yet.</div>';
   $("diagBtn").classList.toggle("has-errors", s.failed > 0);
   $("diagBadge").textContent = s.failed > 9 ? "9+" : s.failed;
@@ -1450,6 +1493,81 @@ $("diagReport").onclick = async () => {
 };
 // keep the little red count on the button fresh without opening the window
 if (!REMOTE) { setInterval(() => { if (window.pywebview && api) loadDiag().catch(() => {}); }, 60000); }
+
+// ---------- updates (desktop) ----------
+// The app checks GitHub for a newer release; when there is one the Update button shows. Setup does the install.
+let upd = null;           // the last check: {current, latest, available, source, size, error}
+let updBusy = false;      // downloading
+let updFrom = null;       // what had focus before the dialog opened
+function showUpd(u) {
+  upd = u;
+  const b = $("updateBtn");
+  b.hidden = !u.available;
+  b.title = u.available ? `RGB Anywhere ${u.latest} is out (you have ${u.current})` : "";
+  $("verText").textContent = u.source ? "Running from source: update with git pull"
+    : !u.current ? "Version unknown"
+    : u.available ? `Version ${u.current} · ${u.latest} is out`
+    : u.error ? `Version ${u.current}` : `Version ${u.current} · Up to date`;
+  $("verCheck").hidden = !!u.source;
+}
+async function checkUpd(force) {
+  try { const u = await api.check_update(!!force); showUpd(u); return u; } catch (e) { return null; }
+}
+function openUpd() {
+  if (!upd || !upd.available) return;
+  updFrom = document.activeElement;
+  $("updWhat").textContent = `Version ${upd.latest} is out. You have ${upd.current}.`;
+  $("updSize").textContent = upd.size ? `about ${Math.round(upd.size / 1e6)} MB` : "about 90 MB";
+  if (!updBusy) {
+    $("updProg").hidden = true; $("updMsg").textContent = "";
+    $("updGo").disabled = false; $("updGo").textContent = "Download and install";
+  }
+  $("upd").classList.add("on"); $("updGo").disabled ? $("updCancel").focus() : $("updGo").focus();
+}
+function closeUpd() {
+  $("upd").classList.remove("on");
+  const back = updFrom && updFrom.offsetParent ? updFrom : $("diagBtn");   // the Update button may have gone meanwhile
+  back.focus();
+}
+$("updateBtn").onclick = openUpd;
+$("updCancel").onclick = closeUpd;
+$("upd").addEventListener("keydown", e => { if (e.key === "Escape") closeUpd(); });
+$("updNotes").onclick = () => api.open_release_notes();
+$("updGo").onclick = async () => {
+  $("updGo").disabled = true; updBusy = true;
+  $("updMsg").textContent = "Starting the download…";
+  const r = await api.install_update().catch(() => ({ error: "Couldn't start the download." }));
+  if (r.error) window.rgbUpdate({ phase: "error", error: r.error });
+};
+$("verCheck").onclick = async () => {
+  $("verCheck").disabled = true; $("verText").textContent = "Checking…";
+  const u = await checkUpd(true);
+  $("verCheck").disabled = false;
+  if (!u) { $("verText").textContent = "Couldn't check for updates"; return; }
+  if (u.error) toast(u.error, { kind: "bad", key: "upd" });
+  else if (u.available) { closeDiag(); openUpd(); }
+  else toast("You have the latest version", { key: "upd" });
+};
+window.rgbUpdate = u => {   // pushed from Python: a check result, or download progress
+  if (u.phase === "download") {
+    updBusy = true; $("updGo").disabled = true; $("updProg").hidden = false;
+    $("updFill").style.transform = `scaleX(${u.percent / 100})`;
+    $("updBar").setAttribute("aria-valuenow", u.percent); $("updPct").textContent = u.percent + "%";
+    if (!u.percent) $("updMsg").textContent = "Downloading…";
+  } else if (u.phase === "setup") {
+    updBusy = false;
+    $("updFill").style.transform = "scaleX(1)"; $("updPct").textContent = "100%";
+    $("updMsg").textContent = "Setup is open. Finish there. This app closes and opens again when it's done.";
+    toast("Setup is open", { kind: "info", key: "upd" });
+  } else if (u.phase === "error") {
+    updBusy = false; $("updProg").hidden = true;
+    $("updMsg").textContent = u.error;
+    $("updGo").disabled = false; $("updGo").textContent = "Try again";
+  } else {
+    showUpd(u);
+    if (u.open && !$("upd").classList.contains("on")) openUpd();
+  }
+};
 
 // ---------- picture editor ----------
 // The maths here mirrors media.py (compose_still / _video_filter) so what you see is what the cooler gets.
@@ -1726,6 +1844,7 @@ window.addEventListener("pywebviewready", async () => {
   window.rgbStatus(init.status[0], init.status[1]);
   setCooler(init.cooler);
   if (!REMOTE) loadDiag().catch(() => {});   // shows a red count on the Logs button if something failed recently
+  if (!REMOTE) checkUpd(false);              // shows the Update button if a newer release is out
 });
 // pywebview fires this itself on the desktop; on a phone there is no pywebview, so fire it once the page is ready
 if (REMOTE) setTimeout(() => window.dispatchEvent(new Event("pywebviewready")), 0);

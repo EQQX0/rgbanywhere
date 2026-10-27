@@ -10,7 +10,8 @@ Usage:
   python rgb.py ram=B32A00 fans=B32A00   per-group color (ram, fans, keyboard, mouse, gpu, audio, other); keeps the rest
   python rgb.py original        put every device back the way it was before RGB Anywhere first changed it
   python rgb.py brightness=60   0-100, scales every color
-  python rgb.py --restore       the same as "original" once, without saving it (Uninstall uses it)
+  python rgb.py --restore       the same as "original" once, without saving it, then restarts the vendor apps of the
+                                devices it handed back (Uninstall uses it)
   python rgb.py --diagnose      what was found and why devices or colors may be missing (changes nothing);
                                 also saved to logs\\diagnose-<time>.txt
 """
@@ -28,9 +29,9 @@ from rgbcore_client import RGBColor
 _log = applog.get("lights")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-STATE = os.path.join(HERE, "state.json")
-CONFIG = os.path.join(HERE, "config.json")
-ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before RGB Anywhere first changed it
+STATE = os.path.join(applog.DATA_DIR, "state.json")  # written by the app (no admin), only read by the daemon
+CONFIG = os.path.join(HERE, "config.json")  # settings the elevated daemon acts on: only admins can change them
+ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before RGB Anywhere first changed it (daemon)
 GROUPS = ("ram", "fans", "keyboard", "mouse", "gpu", "audio", "other")  # what the UI can target (only those a PC has)
 
 
@@ -153,7 +154,8 @@ def load_state():
         _log.exception("state.json is unreadable; using defaults. A copy was kept as %s", keep)
         applog.event("state_corrupt", ok=False, error="state.json unreadable", kept=keep)
         try:
-            os.replace(STATE, keep)
+            if not (applog.PROTECTED and applog.IS_ADMIN):  # the daemon never changes files in the user's folder
+                os.replace(STATE, keep)
         except OSError:
             pass
     # A bad color (an older rgb.py saved any argument as one) would make every device fail: fall back and say so.
@@ -171,6 +173,7 @@ def save_state(state):
     """Write atomically (temp file + replace) so a crash or a second process can't leave a half-written file."""
     tmp = "%s.%d.tmp" % (STATE, os.getpid())
     try:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
         with open(tmp, "w") as f:
             json.dump(state, f)
         os.replace(tmp, STATE)
@@ -454,6 +457,12 @@ def handback_message(done=None):
         " Pick an exit colour for them.")
 
 
+def handback_apps(done=None):
+    """The vendor apps of the devices the latest restore handed back."""
+    done = LAST_RESTORE if done is None else done
+    return sorted({h["app"] for h in done.get("handed_back") or [] if h["app"]})
+
+
 def apply(client, state, log=print):
     """Send the state to every device. Returns how many devices failed (a stale connection fails them all)."""
     mode = state["mode"]
@@ -620,6 +629,105 @@ def start_helper():
         applog.event("helper_start", ok=False, error="sc start exit %s" % r.returncode)
 
 
+CORSAIR_SERVICE = "CorsairDeviceControlService"
+
+
+def _corsair_log():
+    """The newest log of the Corsair service, (path, size) or (None, 0)."""
+    import glob
+    logs = glob.glob(os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), "Corsair", "Logs",
+                                  CORSAIR_SERVICE, "cdcs-*.log"))
+    if not logs:
+        return None, 0
+    newest = max(logs, key=os.path.getmtime)
+    return newest, os.path.getsize(newest)
+
+
+def _icue_exe():
+    """iCUE.exe, or None if iCUE isn't installed."""
+    import glob
+    found = glob.glob(os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Corsair", "*iCUE*", "iCUE.exe"))
+    return found[0] if found else None
+
+
+def switch_ram_to_application(wait=60):
+    """Get RAM sticks out of bootloader mode. A stick that SMBus traffic clashed with falls into it and then ignores
+    Direct writes (OpenRGB lists it without Direct mode, or under the wrong name); only Corsair's own service
+    switches it back, and only once iCUE connects to it: started alone it sits idle and never looks at the RAM.
+    So start the service and iCUE, wait for the service to switch the sticks, then end both again.
+    OpenRGB must not be running meanwhile. Returns True if the service ran. Needs admin."""
+    import icue
+    state = service_state(CORSAIR_SERVICE)
+    exe = _icue_exe()
+    if state is None or not exe:
+        return False
+    if state != "STOPPED" or icue.running():  # iCUE is in use: it handles the sticks itself, and isn't ours to end
+        _log.info("%s is %s and iCUE %s; not reviving the RAM", CORSAIR_SERVICE, state,
+                  "is running" if icue.running() else "isn't")
+        return False
+    old_path, offset = _corsair_log()
+    r = _quiet("sc", "start", CORSAIR_SERVICE)
+    if r.returncode not in (0, 1056):
+        _log.warning("couldn't start %s (exit %s): %s", CORSAIR_SERVICE, r.returncode, (r.stdout + r.stderr).strip()[:150])
+        applog.event("ram_revive", ok=False, error="sc start exit %s" % r.returncode)
+        return False
+    t0 = time.time()
+    switched = stuck = 0
+    connected = enumerated = False
+    gave_up = None
+    try:
+        # Plain start, minimized without focus. Not --autorun, the sign-in start: with iCUE's "start on startup" off it
+        # quits at once and never connects to the service.
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= 1  # STARTF_USESHOWWINDOW
+        si.wShowWindow = 7  # SW_SHOWMINNOACTIVE
+        proc = subprocess.Popen([exe], cwd=os.path.dirname(exe), creationflags=0x00000008, startupinfo=si)  # DETACHED
+        while time.time() - t0 < wait:
+            time.sleep(1)
+            path, size = _corsair_log()
+            if path != old_path:  # each start of the service writes a new log
+                old_path, offset = path, 0
+            if path and size > offset:
+                try:
+                    with open(path, "rb") as f:
+                        f.seek(offset)
+                        text = f.read().decode("utf-8", "ignore")
+                    connected = "New client connected" in text
+                    enumerated = "DRAM enumeration finished" in text
+                    switched = text.count("to mode: Application")
+                    stuck = len(set(re.findall(r"Detected module (\S+).*proto=Bootloader", text)))
+                    if enumerated and switched >= stuck:
+                        time.sleep(2)  # let the last switch finish
+                        break
+                except OSError:
+                    pass
+            if not connected:  # nothing will happen without iCUE: don't sit out the whole wait
+                if proc.poll() is not None and not icue.running():
+                    gave_up = "iCUE quit before it connected to the service"
+                elif time.time() - t0 > min(30, wait):
+                    gave_up = "iCUE didn't connect to the service within %ds" % min(30, wait)
+                if gave_up:
+                    break
+    except OSError as e:
+        gave_up = "couldn't start iCUE: %s" % e
+    finally:
+        icue.quit_icue()  # ends iCUE and stops the services it started
+        t1 = time.time()
+        while service_state(CORSAIR_SERVICE) not in ("STOPPED", None) and time.time() - t1 < 15:
+            time.sleep(0.5)
+        time.sleep(3)  # let it let go of the SMBus
+    ok = enumerated and switched >= stuck
+    if gave_up:
+        _log.warning("RAM revive gave up after %.0fs: %s (%s)", time.time() - t0, gave_up, exe)
+    else:
+        _log.info("%s and iCUE ran %.0fs to revive the RAM; %d stick(s) in bootloader mode, %d switched to Application "
+                  "mode%s", CORSAIR_SERVICE, time.time() - t0, stuck, switched, "" if enumerated else
+                  "; the service never finished looking at the RAM")
+    applog.event("ram_revive", ok=ok, stuck=stuck, switched=switched, seconds=round(time.time() - t0),
+                 **({"error": gave_up} if gave_up else {}))
+    return True
+
+
 def start_pawnio(name="PawnIO", wait=10):
     """Start the PawnIO driver if it is installed but stopped. It is a demand-start service, so after a restart nothing
     else starts it, and OpenRGB then finds no SMBus (no RAM). Returns True if it was started here. Needs admin."""
@@ -659,7 +767,10 @@ def _main():
     if "--diagnose" in args:
         sys.exit(diagnose())
     if "--restore" in args:  # Uninstall.exe, before it removes the daemon: hand the devices back, change nothing else
-        sys.exit(1 if restore(connect(wait=20), state=state) else 0)
+        failed = restore(connect(wait=20), state=state)
+        import handback
+        print(handback.summary(handback.restart(handback_apps())) or "nothing to hand back")
+        sys.exit(1 if failed else 0)
     unknown = [a for a in args if a.startswith("--") and a != "--restart"]
     if unknown:
         sys.exit("unknown option %s. See the usage at the top of rgb.py." % " ".join(unknown))
