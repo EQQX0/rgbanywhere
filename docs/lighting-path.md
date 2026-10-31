@@ -30,3 +30,14 @@ Colours that "do not change" with no error anywhere usually mean one of: the dev
 5. When the lights went off together with the monitors, `App.wake_watch` turns the lights back on at the first input after 3 s ("input after lights+monitors off; lights on").
 
 Unverified on hardware: whether SC_MONITORPOWER behaves the same on PCs with Modern Standby, where Windows may treat it differently.
+
+## Colors painted over by G HUB or a game
+
+Logitech G HUB wakes the keyboard and mouse with its own colors after idle and applies a game's profile when the game starts. `App.keep_watch` (thread "keep-colors") sends the current colors again, without a rescan:
+
+1. Input after 60 s without any: send again after 0.5 s and 4 s.
+2. A program's window fills its whole monitor (`fullscreen_program`): send again after 2, 8 and 20 s. Once per program, until another one takes over or none is full screen.
+3. Not while the mode is "original" (the vendor apps own the lights), and not before the first connection.
+4. Outcome: `logs\events.jsonl` "keep_colors" with `why` idle or game. `"keep_colors": false` in config.json turns it off.
+
+Unverified on hardware: whether G HUB lets a later OpenRGB write stand after a game profile loads.

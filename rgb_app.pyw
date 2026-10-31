@@ -121,6 +121,12 @@ IDLE_AFTER = 300  # seconds without keyboard/mouse input; a rescan blinks every 
 # The price: roughly one rescan in five brings a RAM stick up missing, as the wrong model or without Direct
 # mode (something garbles OpenRGB's reads while it detects them). Set to False to stop rescanning unasked.
 IDLE_RESCAN = bool(rgb.CFG.get("idle_rescan", False))  # config.json; only useful with Logitech G HUB or similar
+# The gentler fix for the same problem: G HUB (or a game's own lighting profile) paints over the keyboard and mouse
+# after idle or when a game starts. Sending our colors again needs no rescan, so it can't cost a RAM stick.
+KEEP_COLORS = bool(rgb.CFG.get("keep_colors", True))  # config.json
+KEEP_IDLE_AFTER = 60  # seconds without input before coming back counts as "back from idle"
+KEEP_AFTER_IDLE = (0.5, 4)  # seconds after coming back at which the colors are sent again
+KEEP_AFTER_GAME = (2, 8, 20)  # seconds after a full-screen program appears (G HUB changes the lights a moment late)
 CHECK_UPDATES = rgb.CFG.get("check_updates", True) is not False  # config.json: False = only the Check button asks GitHub
 UPDATE_EVERY = 6 * 3600  # seconds between checks for a new release
 UPDATE_CACHE = 3600  # seconds an answer is reused when the page asks again (reopening the window)
@@ -1141,6 +1147,40 @@ class App:
                 away = 0
             time.sleep(2)
 
+    def resend_colors(self, why, delays):
+        """Send the colors again at each of `delays` seconds from now. Not while the lights are handed back to the
+        vendor apps (mode "original"): painting over them is what that mode avoids."""
+        def go():
+            if self.state.get("mode") == "original" or self.client is None:
+                return
+            log.info("sending the colors again (%s)", why)
+            self.jobs.put("apply")
+        for d in delays:
+            t = threading.Timer(d, go)
+            t.daemon = True
+            t.start()
+
+    def keep_watch(self):
+        """Put the colors back after something else paints over them: coming back from idle (G HUB wakes the keyboard
+        and mouse with its own colors) and a full-screen program starting (a game's G HUB profile)."""
+        away, last_game = False, None
+        while True:
+            try:
+                if idle_seconds() >= KEEP_IDLE_AFTER:
+                    away = True
+                elif away:
+                    away = False
+                    applog.event("keep_colors", ok=True, why="idle")
+                    self.resend_colors("back from idle", KEEP_AFTER_IDLE)
+                game = fullscreen_program()
+                if game and game != last_game:
+                    applog.event("keep_colors", ok=True, why="game", program=game)
+                    self.resend_colors("%s went full screen" % game, KEEP_AFTER_GAME)
+                last_game = game
+            except Exception:
+                log.exception("colors watcher hit an error (it keeps running)")
+            time.sleep(2)
+
     def wake_watch(self):
         """Lights switched off together with the monitors come back on at the first keyboard/mouse input, the same
         moment Windows wakes the monitors. Armed by monitors_off(wake_lights=True) once the monitors really went off."""
@@ -1817,6 +1857,50 @@ def idle_seconds():
     return idle_ms() // 1000
 
 
+class _RECT(ctypes.Structure):
+    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+
+class _MONITORINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("rcMonitor", _RECT), ("rcWork", _RECT), ("dwFlags", ctypes.c_uint)]
+
+
+_SHELL_CLASSES = {"Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"}
+
+
+def fullscreen_program():
+    """File name of the program whose window fills its whole monitor (a game), or None. Not the desktop, not this app."""
+    u, k = ctypes.windll.user32, ctypes.windll.kernel32
+    hwnd = u.GetForegroundWindow()
+    if not hwnd:
+        return None
+    cls = ctypes.create_unicode_buffer(64)
+    u.GetClassNameW(hwnd, cls, 64)
+    if cls.value in _SHELL_CLASSES:
+        return None
+    win = _RECT()
+    mon = _MONITORINFO(ctypes.sizeof(_MONITORINFO))
+    if not u.GetWindowRect(hwnd, ctypes.byref(win)) or not u.GetMonitorInfoW(u.MonitorFromWindow(hwnd, 2), ctypes.byref(mon)):
+        return None
+    m = mon.rcMonitor
+    if not (win.left <= m.left and win.top <= m.top and win.right >= m.right and win.bottom >= m.bottom):
+        return None
+    pid = ctypes.c_ulong()
+    u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    if pid.value == os.getpid():
+        return None
+    h = k.OpenProcess(0x1000, False, pid.value)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return None
+    try:
+        buf, size = ctypes.create_unicode_buffer(520), ctypes.c_ulong(520)
+        if not k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+            return None
+        return os.path.basename(buf.value)
+    finally:
+        k.CloseHandle(h)
+
+
 def colorref(rgb_tuple):
     r, g, b = rgb_tuple
     return ctypes.c_int(r | (g << 8) | (b << 16))  # COLORREF is 0x00BBGGRR
@@ -1922,8 +2006,11 @@ def main():
         app.start_tray()
         for name, target in (("lights", app.rgb_worker), ("cooler-watch", app.cooler_watch), ("single-instance", listen),
                              ("icue-watch", functools.partial(icue.watch, app.rescan)), ("idle-watch", app.idle_watch),
-                             ("wake-watch", app.wake_watch), ("update-watch", app.update_watch)):
+                             ("wake-watch", app.wake_watch), ("keep-colors", app.keep_watch),
+                             ("update-watch", app.update_watch)):
             if name == "idle-watch" and not IDLE_RESCAN:
+                continue
+            if name == "keep-colors" and not KEEP_COLORS:
                 continue
             if name == "update-watch" and not CHECK_UPDATES:
                 continue

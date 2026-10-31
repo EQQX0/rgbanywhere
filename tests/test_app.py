@@ -288,6 +288,86 @@ class WatchTest(unittest.TestCase):
         self.assertGreaterEqual(len(calls), 2)
 
 
+class KeepColorsTest(unittest.TestCase):
+    def watch(self, a, rounds):
+        """Run keep_watch for the given (idle seconds, full-screen program) rounds."""
+        it = iter(rounds)
+        cur = [None]
+
+        def nxt():
+            cur[0] = next(it)
+        nxt()
+
+        def sleep(_):
+            try:
+                nxt()
+            except StopIteration:
+                raise StopLoop
+        with mock.patch.object(m, "idle_seconds", lambda: cur[0][0]), mock.patch.object(m, "fullscreen_program", lambda: cur[0][1]), \
+                mock.patch.object(m.time, "sleep", sleep):
+            with self.assertRaises(StopLoop):
+                a.keep_watch()
+
+    def test_coming_back_from_idle_sends_the_colors_again(self):
+        a = bare_app()
+        a.resend_colors = mock.Mock()
+        self.watch(a, [(0, None), (m.KEEP_IDLE_AFTER + 5, None), (0, None), (0, None)])
+        a.resend_colors.assert_called_once_with("back from idle", m.KEEP_AFTER_IDLE)
+
+    def test_a_short_pause_is_not_idle(self):
+        a = bare_app()
+        a.resend_colors = mock.Mock()
+        self.watch(a, [(0, None), (m.KEEP_IDLE_AFTER - 1, None), (0, None)])
+        a.resend_colors.assert_not_called()
+
+    def test_a_game_going_full_screen_sends_the_colors_once(self):
+        a = bare_app()
+        a.resend_colors = mock.Mock()
+        self.watch(a, [(0, None), (0, "Fortnite.exe"), (0, "Fortnite.exe"), (0, None), (0, "Fortnite.exe")])
+        self.assertEqual([c.args[1] for c in a.resend_colors.call_args_list], [m.KEEP_AFTER_GAME] * 2)
+
+    def test_the_watcher_survives_an_error(self):
+        a = bare_app()
+        a.resend_colors = mock.Mock()
+        calls = []
+
+        def boom():
+            calls.append(1)
+            raise OSError("no foreground window")
+        with mock.patch.object(m, "idle_seconds", return_value=0), mock.patch.object(m, "fullscreen_program", boom), \
+                mock.patch.object(m.time, "sleep", sleeps_then_stops(2)):
+            with self.assertRaises(StopLoop):
+                a.keep_watch()
+        self.assertGreaterEqual(len(calls), 2)
+
+    def resend(self, a, delays):
+        class Now:  # a Timer that fires straight away
+            def __init__(self, delay, fn):
+                self.fn, self.daemon = fn, False
+
+            def start(self):
+                self.fn()
+        a.jobs = mock.Mock()
+        with mock.patch.object(m.threading, "Timer", Now):
+            a.resend_colors("test", delays)
+        return a.jobs.put
+
+    def test_resend_applies_once_per_delay(self):
+        a = bare_app()
+        a.client = object()
+        put = self.resend(a, (1, 2, 3))
+        self.assertEqual(put.call_args_list, [mock.call("apply")] * 3)
+
+    def test_resend_leaves_the_vendor_lighting_alone_in_original_mode(self):
+        a = bare_app(mode="original")
+        a.client = object()
+        self.resend(a, (1,)).assert_not_called()
+
+    def test_resend_waits_for_a_connection(self):
+        a = bare_app()
+        self.resend(a, (1,)).assert_not_called()
+
+
 class PreviewTest(unittest.TestCase):
     def test_two_threads_asking_at_once_both_get_the_preview(self):
         with tempfile.TemporaryDirectory() as tmp:
