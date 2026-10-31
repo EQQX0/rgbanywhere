@@ -8,6 +8,8 @@ Usage:
   python cooler.py <image|gif|video>   put this on the cooler screen
   python cooler.py --restore            put back the original DeepCool file
   python cooler.py --off / --on         black out the screen / bring its picture back
+  python cooler.py --power-off / --power-on   switch the screen itself off / on
+  python cooler.py --details-off / --details-on   hide / show the time, CPU and other readouts over the picture
 """
 import glob
 import os
@@ -21,6 +23,7 @@ import time
 import imageio_ffmpeg
 
 import applog
+import deepcool_db
 import media
 
 log = applog.get("cooler")
@@ -241,12 +244,74 @@ def unblank():
     return True
 
 
+def _device_key():
+    for key in deepcool_db.read_all():
+        if key.startswith("!mastercraft!"):
+            return key
+    raise RuntimeError("Can't find the cooler's settings in DeepCool's database. Open the DeepCool app once first.")
+
+
+def screen_power(on=None):
+    """Switch the cooler screen itself off (on=False) or back on (on=True), as DeepCool's own screen switch does.
+    With on=None, return whether it is currently on. Changing it closes DeepCool for a moment, since its settings are
+    only writable while it's shut."""
+    key = _device_key()
+    now = deepcool_db.read_json(key)["options"]["screenStatus"] != 0
+    if on is None or bool(on) == now:
+        return now
+    stop_app()
+    try:
+        deepcool_db.backup()
+        deepcool_db.set_json_field(key, ["options", "screenStatus"], 1 if on else 0)
+    finally:
+        start_app()
+    log.info("screen power: %s", "on" if on else "off")
+    return bool(on)
+
+
+def screen_flags():
+    """{"power": bool, "details": bool}: whether the screen itself is on, and whether it shows its readouts."""
+    return {"power": screen_power(), "details": details()}
+
+
+def _detail_keys():
+    return [k for k in deepcool_db.read_all() if "_displayConfig_" in k]
+
+
+def details(on=None):
+    """Show (on=True) or hide (on=False) the readouts DeepCool draws over the cooler screen (time, CPU, ...).
+    With on=None, return whether any is showing. Closes DeepCool for a moment when it has to change them."""
+    keys = _detail_keys()
+    if not keys:
+        raise RuntimeError("Can't find the cooler's screen layouts in DeepCool's database. Open the DeepCool app once first.")
+    now = any(deepcool_db.read_json(k)["DataDisplay"] for k in keys)
+    if on is None or all(bool(deepcool_db.read_json(k)["DataDisplay"]) == bool(on) for k in keys):
+        return now
+    stop_app()
+    try:
+        deepcool_db.backup()
+        for k in keys:
+            deepcool_db.set_json_field(k, ["DataDisplay"], bool(on))
+    finally:
+        start_app()
+    log.info("screen details: %s", "shown" if on else "hidden")
+    return bool(on)
+
+
 if __name__ == "__main__":
     applog.setup("cooler-cli")
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     if sys.argv[1] == "--restore":
         print("restored" if restore() else "nothing to restore")
+    elif sys.argv[1] == "--details-off":
+        print("details hidden" if not details(False) else "failed")
+    elif sys.argv[1] == "--details-on":
+        print("details shown" if details(True) else "failed")
+    elif sys.argv[1] == "--power-off":
+        print("screen power off" if not screen_power(False) else "failed")
+    elif sys.argv[1] == "--power-on":
+        print("screen power on" if screen_power(True) else "failed")
     elif sys.argv[1] == "--off":
         print("screen off" if blank() else "already off")
     elif sys.argv[1] == "--on":

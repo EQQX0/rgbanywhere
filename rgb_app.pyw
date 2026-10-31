@@ -108,7 +108,8 @@ FW_RULE = "RGB Anywhere Phone"
 PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "set_exit", "apply_preset", "save_preset",
                  "update_preset", "delete_preset", "restore_preset", "restore_screen", "rescan", "set_sync_accent",
                  "monitors_off", "save_profile", "update_profile", "delete_profile", "restore_profile",
-                 "apply_profile", "calibrate", "set_calibration", "reset_calibration", "apply_screen", "discard_staged", "log_client"}
+                 "apply_profile", "calibrate", "set_calibration", "reset_calibration", "apply_screen", "discard_staged", "log_client",
+                 "set_screen_power", "set_screen_details"}
 APK_PATH = os.path.join(HERE, "android", "RGB-Control.apk")
 CALIBRATION_TIMEOUT = 600  # seconds: a phone that wanders off mid-calibration can't leave the lights on a test color
 RESCAN_GAP = 30  # seconds between rescans: restarting OpenRGB again sooner tends to cost a RAM stick
@@ -797,6 +798,12 @@ class Api:
     def restore_screen(self):
         self._app.restore_screen()
 
+    def set_screen_power(self, on):
+        self._app.set_screen_flag("power", bool(on))
+
+    def set_screen_details(self, on):
+        self._app.set_screen_flag("details", bool(on))
+
 
 def _logged_api(cls):
     """Wrap every public Api method so an exception is written to the log with its stack trace before it propagates.
@@ -845,6 +852,7 @@ class App:
         applog.add_secret(self.state["phone_token"])  # never let the sign-in token reach a log line
         self._client_log = []  # timestamps, to rate-limit errors reported by the page
         self._cooler_err = None
+        self._screen_flags = {}  # the cooler's screen switches as last read (power, details)
         self.phone_server = None
         self.busy_text = ""
         self.last_msg = ["", ""]
@@ -1256,8 +1264,14 @@ class App:
             return {"live": False, "name": "Nothing set in DeepCool yet", "url": ""}
         self._cooler_err = None
         name = self.state.get("cooler_name") if self.state.get("cooler_key") == key else None
-        return {"live": deepcool_running(), "name": name or default_name(src),
-                "url": "/preview/" + os.path.basename(dst)}
+        try:
+            flags = cooler.screen_flags()
+        except Exception as e:  # DeepCool may be rewriting its database right now: keep the last answer
+            log.debug("can't read the cooler's screen switches: %s: %s", type(e).__name__, e)
+            flags = self._screen_flags
+        self._screen_flags = flags
+        return dict({"live": deepcool_running(), "name": name or default_name(src),
+                     "url": "/preview/" + os.path.basename(dst)}, **flags)
 
     def cooler_watch(self):
         """Keep the preview in sync, including changes made in the DeepCool app itself."""
@@ -1612,6 +1626,14 @@ class App:
         meta = dict(self._file_facts(path, source), name=shown, spec=media.normalize_spec(spec))
         log.info("put on cooler: %s spec=%s", shown, meta["spec"])
         self.run_screen(go, "Converting %s…" % shown, "Now on your cooler", kind="cooler_apply", meta=meta, src=path)
+
+    def set_screen_flag(self, which, on):
+        """Switch the cooler screen itself (which="power") or the readouts it draws over the picture ("details")."""
+        what = "screen" if which == "power" else "details"
+        fn = cooler.screen_power if which == "power" else cooler.details
+        log.info("cooler %s -> %s", what, "on" if on else "off")
+        self.run_screen(lambda: fn(on), "Turning the %s %s…" % (what, "on" if on else "off"),
+                        "%s %s" % (what.capitalize(), "on" if on else "off"), kind="cooler_" + which)
 
     def restore_screen(self):
         def go():

@@ -479,6 +479,8 @@
   .rowbtns .btn { height: 34px; padding: 0 14px; font-size: 13px; }
   .switchrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); }
   .switchrow .switch { padding: 0; }
+  .switchrow .sub { margin-left: 6px; color: var(--faint); font-size: 12px; }
+  .switch:disabled { opacity: .5; cursor: default; }
 
   /* ---------- phone / remote layout ---------- */
   input[type=range] { touch-action: pan-y; }
@@ -691,6 +693,14 @@
           Choose file
         </button>
         <button class="btn" id="restore">Restore original</button>
+      </div>
+      <div class="switchrow">
+        <span>Screen on</span>
+        <button class="switch" id="scrPower" role="switch" aria-checked="true" aria-label="Cooler screen on or off" disabled><span class="track"><span class="knob"></span></span></button>
+      </div>
+      <div class="switchrow">
+        <span>Show details <small class="sub">time, CPU, temperature</small></span>
+        <button class="switch" id="scrDetails" role="switch" aria-checked="true" aria-label="Show details on the cooler screen" disabled><span class="track"><span class="knob"></span></span></button>
       </div>
       <div class="hint">Or drag an image, GIF or video onto the screen above.</div>
     </section>
@@ -1345,11 +1355,23 @@ function setCooler(c) {
     $("video").play().catch(() => {});
   }
   $("empty").style.display = c.url ? "none" : "grid";
+  for (const [id, key] of [["scrPower", "power"], ["scrDetails", "details"]]) {
+    const known = typeof c[key] === "boolean";
+    if (known) $(id).setAttribute("aria-checked", c[key]);
+    $(id).dataset.known = known ? "1" : "";
+  }
+  syncScreenSwitches();
+}
+let coolerBusy = false;
+function syncScreenSwitches() {
+  for (const id of ["scrPower", "scrDetails"]) $(id).disabled = coolerBusy || !$(id).dataset.known;
 }
 function setBusy(text) {
   $("bezel").classList.toggle("busy", !!text);
   $("busyText").textContent = text || "";
   $("choose").disabled = $("restore").disabled = !!text;
+  coolerBusy = !!text;
+  syncScreenSwitches();
 }
 let lastMsg = "", lastMsgAt = 0;
 function setMsg(text, kind) {
@@ -1368,6 +1390,20 @@ $("choose").onclick = async () => {
   if (r.error) setMsg(r.error, "bad"); else openEditor(r);
 };
 $("restore").onclick = () => { api.restore_screen(); toast("Restoring the original cooler picture…", { kind: "info", key: "restore" }); };
+
+// Both switches close DeepCool for a moment, so they lock while a cooler job runs (setBusy).
+$("scrPower").onclick = () => {
+  const want = $("scrPower").getAttribute("aria-checked") !== "true";
+  $("scrPower").setAttribute("aria-checked", want);
+  api.set_screen_power(want);
+  toast(want ? "Turning the cooler screen on…" : "Turning the cooler screen off…", { kind: "info", key: "scrPower" });
+};
+$("scrDetails").onclick = () => {
+  const want = $("scrDetails").getAttribute("aria-checked") !== "true";
+  $("scrDetails").setAttribute("aria-checked", want);
+  api.set_screen_details(want);
+  toast(want ? "Showing details on the cooler screen…" : "Hiding details on the cooler screen…", { kind: "info", key: "scrDetails" });
+};
 
 // drag & drop: visuals here, the file path is picked up in Python
 let depth = 0;
