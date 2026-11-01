@@ -705,10 +705,6 @@
         <button class="btn" id="restore">Restore original</button>
       </div>
       <div class="switchrow">
-        <span>Screen on</span>
-        <button class="switch" id="scrPower" role="switch" aria-checked="true" aria-label="Cooler screen on or off" disabled><span class="track"><span class="knob"></span></span></button>
-      </div>
-      <div class="switchrow">
         <span>Show details <small class="sub">time, CPU, temperature</small></span>
         <button class="switch" id="scrDetails" role="switch" aria-checked="true" aria-label="Show details on the cooler screen" disabled><span class="track"><span class="knob"></span></span></button>
       </div>
@@ -1365,16 +1361,14 @@ function setCooler(c) {
     $("video").play().catch(() => {});
   }
   $("empty").style.display = c.url ? "none" : "grid";
-  for (const [id, key] of [["scrPower", "power"], ["scrDetails", "details"]]) {
-    const known = typeof c[key] === "boolean";
-    if (known) $(id).setAttribute("aria-checked", c[key]);
-    $(id).dataset.known = known ? "1" : "";
-  }
+  const known = typeof c.details === "boolean";
+  if (known) $("scrDetails").setAttribute("aria-checked", c.details);
+  $("scrDetails").dataset.known = known ? "1" : "";
   syncScreenSwitches();
 }
 let coolerBusy = false;
 function syncScreenSwitches() {
-  for (const id of ["scrPower", "scrDetails"]) $(id).disabled = coolerBusy || !$(id).dataset.known;
+  $("scrDetails").disabled = coolerBusy || !$("scrDetails").dataset.known;
 }
 function setBusy(text) {
   $("bezel").classList.toggle("busy", !!text);
@@ -1401,13 +1395,7 @@ $("choose").onclick = async () => {
 };
 $("restore").onclick = () => { api.restore_screen(); toast("Restoring the original cooler picture…", { kind: "info", key: "restore" }); };
 
-// Both switches close DeepCool for a moment, so they lock while a cooler job runs (setBusy).
-$("scrPower").onclick = () => {
-  const want = $("scrPower").getAttribute("aria-checked") !== "true";
-  $("scrPower").setAttribute("aria-checked", want);
-  api.set_screen_power(want);
-  toast(want ? "Turning the cooler screen on…" : "Turning the cooler screen off…", { kind: "info", key: "scrPower" });
-};
+// The switch closes DeepCool for a moment, so it locks while a cooler job runs (setBusy).
 $("scrDetails").onclick = () => {
   const want = $("scrDetails").getAttribute("aria-checked") !== "true";
   $("scrDetails").setAttribute("aria-checked", want);

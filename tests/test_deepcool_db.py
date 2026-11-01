@@ -92,36 +92,32 @@ class ScreenSwitchTest(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
 
     def test_flags_report_the_current_state(self):
-        self.assertEqual(cooler.screen_flags(), {"power": True, "details": True})
-
-    def test_power_off_and_back_on(self):
-        self.assertFalse(cooler.screen_power(False))
-        self.assertEqual(cooler.screen_flags()["power"], False)
-        self.assertTrue(cooler.screen_power(True))
-        self.assertEqual(cooler.screen_flags()["power"], True)
+        self.assertEqual(cooler.screen_flags(), {"details": True})
 
     def test_details_off_hides_every_layout(self):
         cooler.details(False)
         for k in LAYOUTS:
             self.assertFalse(db.read_json(k, self.folder)["DataDisplay"])
-        self.assertFalse(cooler.screen_flags()["details"])
+        self.assertEqual(cooler.screen_flags(), {"details": False})
+
+    def test_details_back_on(self):
+        cooler.details(False)
+        self.assertTrue(cooler.details(True))
+        self.assertEqual(cooler.screen_flags(), {"details": True})
 
     def test_no_change_means_deepcool_is_left_running(self):
-        cooler.screen_power(True)
         cooler.details(True)
         self.stop.assert_not_called()
 
     def test_deepcool_is_restarted_even_if_the_write_fails(self):
         with mock.patch.object(db, "set_json_field", side_effect=OSError("locked")):
             with self.assertRaises(OSError):
-                cooler.screen_power(False)
+                cooler.details(False)
         self.start.assert_called_once()
 
-    def test_power_and_details_do_not_disturb_each_other(self):
-        cooler.screen_power(False)
-        self.assertTrue(cooler.screen_flags()["details"])
+    def test_the_screen_power_setting_is_left_alone(self):
         cooler.details(False)
-        self.assertEqual(cooler.screen_flags(), {"power": False, "details": False})
+        self.assertEqual(db.read_json(DEVICE, self.folder)["options"]["screenStatus"], 1)
 
 
 if __name__ == "__main__":

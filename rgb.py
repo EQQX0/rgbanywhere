@@ -18,6 +18,7 @@ Usage:
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import time
@@ -196,6 +197,20 @@ def connect(wait=60):
     The daemon is elevated because RAM and some boards are reached over SMBus; this process need not be.
     """
     return _retry(lambda: rgbcore_client.Client(rgbcore_client.RemoteBackend()), wait)
+
+
+def wake_daemon():
+    """Start the lighting daemon's task now when nothing listens on its port, instead of finding that out on the
+    first connect: at login the app is up before the daemon (its task waits 15 s after logon), and every second
+    counts while the window says Connecting. Returns whether it asked for a start."""
+    try:
+        socket.create_connection(("127.0.0.1", rgbcore_client.PORT), timeout=1).close()
+        return False
+    except OSError:
+        pass
+    r = _quiet("schtasks", "/run", "/tn", rgbcore_client.TASK_LIGHTING)
+    _log.info("lighting daemon not listening at start; schtasks /run 'RGB Anywhere Lighting' -> exit %s", r.returncode)
+    return r.returncode == 0
 
 
 def daemon(wait=30):

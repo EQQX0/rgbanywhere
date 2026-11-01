@@ -490,6 +490,46 @@ class HealthTest(unittest.TestCase):
         self.assertEqual(a.conflicts[0]["fix"], "turn it off")
 
 
+class StartupConnectTest(unittest.TestCase):
+    def test_rescan_is_held_back_while_the_first_connection_is_made(self):
+        a = bare_app()
+        a.rescan = m.App.rescan.__get__(a)
+        a.connecting_since = time.time() - 10
+        a.js = mock.Mock()
+        a.rescan_lock, a.rescan_timer, a.last_rescan = threading.Lock(), None, 0
+        a._rescan = mock.Mock()
+        a.rescan()
+        a._rescan.assert_not_called()
+        self.assertIn("Still starting up", a.js.call_args.args[1])
+
+    def test_rescan_works_once_the_connection_took_too_long(self):
+        a = bare_app()
+        a.rescan = m.App.rescan.__get__(a)
+        a.connecting_since = time.time() - m.CONNECT_GRACE - 1
+        a.rescan_lock, a.rescan_timer, a.last_rescan = threading.Lock(), None, 0
+        a._rescan = mock.Mock()
+        a.rescan()
+        a._rescan.assert_called_once()
+
+    def test_the_status_counts_seconds_while_connecting(self):
+        a = bare_app()
+        a.status, a.connecting_since = ["", ""], 0
+        seen = []
+        a.set_status = lambda text, kind, quiet=False: seen.append(text)
+
+        def slow_connect(wait):
+            time.sleep(4.3)
+            return "client"
+        with mock.patch.object(m.rgb, "connect", slow_connect):
+            self.assertEqual(a.connect_daemon(45), "client")
+        self.assertTrue(any(s.startswith("Connecting… ") for s in seen), seen)
+        self.assertEqual(a.connecting_since, 0)
+
+    def test_the_cooler_screen_power_switch_is_gone(self):
+        self.assertNotIn("set_screen_power", m.PHONE_METHODS)
+        self.assertFalse(hasattr(m.Api, "set_screen_power"))
+
+
 class PreviewTest(unittest.TestCase):
     def test_two_threads_asking_at_once_both_get_the_preview(self):
         with tempfile.TemporaryDirectory() as tmp:

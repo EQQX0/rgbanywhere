@@ -109,7 +109,7 @@ PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "set_exit", 
                  "update_preset", "delete_preset", "restore_preset", "restore_screen", "rescan", "set_sync_accent",
                  "monitors_off", "save_profile", "update_profile", "delete_profile", "restore_profile",
                  "apply_profile", "calibrate", "set_calibration", "reset_calibration", "apply_screen", "discard_staged", "log_client",
-                 "set_screen_power", "set_screen_details", "get_health", "fix_it"}
+                 "set_screen_details", "get_health", "fix_it"}
 APK_PATH = os.path.join(HERE, "android", "RGB-Control.apk")
 CALIBRATION_TIMEOUT = 600  # seconds: a phone that wanders off mid-calibration can't leave the lights on a test color
 RESCAN_GAP = 30  # seconds between rescans: restarting OpenRGB again sooner tends to cost a RAM stick
@@ -130,6 +130,7 @@ KEEP_AFTER_GAME = (2, 8, 20)  # seconds after a full-screen program appears (G H
 # A device that was there and is not any more (the keyboard after sleep) gets one rescan by itself, as a person would
 # press Rescan. A rescan can cost a RAM stick, so it is tried HEALTH_AUTO_FIXES times and then left to the Fix it button.
 AUTO_RECONNECT = bool(rgb.CFG.get("auto_reconnect", True))  # config.json
+CONNECT_GRACE = 60  # seconds a first connection may take before Rescan is allowed to interrupt it
 HEALTH_EVERY = 20  # seconds between looks at the device list
 HEALTH_AUTO_FIXES = 2
 CONFLICTS_EVERY = 60  # seconds between looks at the running programs (tasklist is slow)
@@ -823,11 +824,8 @@ class Api:
     def restore_screen(self):
         self._app.restore_screen()
 
-    def set_screen_power(self, on):
-        self._app.set_screen_flag("power", bool(on))
-
     def set_screen_details(self, on):
-        self._app.set_screen_flag("details", bool(on))
+        self._app.set_screen_details(bool(on))
 
 
 def _logged_api(cls):
@@ -877,7 +875,7 @@ class App:
         applog.add_secret(self.state["phone_token"])  # never let the sign-in token reach a log line
         self._client_log = []  # timestamps, to rate-limit errors reported by the page
         self._cooler_err = None
-        self._screen_flags = {}  # the cooler's screen switches as last read (power, details)
+        self._screen_flags = {}  # the cooler's screen switch as last read (details)
         self.phone_server = None
         self.busy_text = ""
         self.last_msg = ["", ""]
@@ -887,6 +885,7 @@ class App:
             with open(ACCENT_BACKUP, "w") as f:
                 json.dump(winaccent.snapshot(), f, indent=1)
         self.client = None
+        self.connecting_since = 0  # when the connection in progress began; 0 = none (see connect_daemon)
         self.health = {"state": "starting", "devices": 0, "missing": [], "note": ""}  # see check_health
         self.auto_fixes = 0   # rescans the app has done by itself for the current loss
         self.conflicts = []   # other RGB programs running: [{"name", "fix"}]
@@ -919,11 +918,28 @@ class App:
             except Exception as e:  # e.g. the window is hidden or still loading; the page catches up on its next poll
                 log.debug("evaluate_js(%s) failed: %s: %s", fn, type(e).__name__, e)
 
-    def set_status(self, text, kind):
-        if text != self.status[0]:
+    def set_status(self, text, kind, quiet=False):
+        if text != self.status[0] and not quiet:
             log.info("status: %s (%s)", text, kind)
         self.status = [text, kind]
         self.js("rgbStatus", text, kind)
+
+    def connect_daemon(self, wait):
+        """rgb.connect, with the seconds counting in the status so a slow start does not look like a stuck one (the
+        lighting service needs about 15 s after login to find the devices)."""
+        done, t0 = threading.Event(), time.time()
+        self.connecting_since = t0
+
+        def tick():
+            while not done.wait(1):
+                if time.time() - t0 >= 3:
+                    self.set_status("Connecting… %d s" % (time.time() - t0), "warn", quiet=True)
+        threading.Thread(target=tick, daemon=True, name="connect-tick").start()
+        try:
+            return rgb.connect(wait=wait)
+        finally:
+            done.set()
+            self.connecting_since = 0
 
     # ----- lighting -----
     def commit(self):
@@ -1030,6 +1046,13 @@ class App:
         """
         if not retry:
             self.rescan_tries = 0
+            since = getattr(self, "connecting_since", 0)
+            if since and time.time() - since < CONNECT_GRACE:
+                # A rescan now would restart OpenRGB under the connection that is still being made, and start over.
+                n = int(time.time() - since)
+                log.info("rescan asked %d s into the first connection; not now, it is still connecting", n)
+                self.js("rgbToast", "Still starting up (%d s). It connects by itself, no rescan needed." % n, "info")
+                return
         with self.rescan_lock:
             if self.rescan_timer:
                 return
@@ -1102,7 +1125,7 @@ class App:
                 client = self.client  # a rescan may drop self.client from another thread meanwhile
                 if client is None or job == "connect":
                     self.set_status("Connecting…", "warn")
-                    client = self.client = rgb.connect(wait=45)
+                    client = self.client = self.connect_daemon(45)
                     rgb.prepare(client)
                     self.note_devices(client)
                     self.set_status("%d devices" % len(client.devices), "ok")
@@ -1797,13 +1820,11 @@ class App:
         log.info("put on cooler: %s spec=%s", shown, meta["spec"])
         self.run_screen(go, "Converting %s…" % shown, "Now on your cooler", kind="cooler_apply", meta=meta, src=path)
 
-    def set_screen_flag(self, which, on):
-        """Switch the cooler screen itself (which="power") or the readouts it draws over the picture ("details")."""
-        what = "screen" if which == "power" else "details"
-        fn = cooler.screen_power if which == "power" else cooler.details
-        log.info("cooler %s -> %s", what, "on" if on else "off")
-        self.run_screen(lambda: fn(on), "Turning the %s %s…" % (what, "on" if on else "off"),
-                        "%s %s" % (what.capitalize(), "on" if on else "off"), kind="cooler_" + which)
+    def set_screen_details(self, on):
+        """Show or hide the readouts (time, CPU, temperature) DeepCool draws over the cooler picture."""
+        log.info("cooler details -> %s", "on" if on else "off")
+        self.run_screen(lambda: cooler.details(on), "Turning the details %s…" % ("on" if on else "off"),
+                        "Details %s" % ("on" if on else "off"), kind="cooler_details")
 
     def restore_screen(self):
         def go():
@@ -1886,9 +1907,7 @@ class App:
             yield pystray.MenuItem("Rescan devices", lambda i, it: self.rescan())
             if cooler.installed() and self._screen_flags:
                 yield pystray.Menu.SEPARATOR
-                yield pystray.MenuItem("Cooler screen on", lambda i, it: self.set_screen_flag("power", not self._screen_flags["power"]),
-                                       checked=lambda it: bool(self._screen_flags.get("power")))
-                yield pystray.MenuItem("Cooler details", lambda i, it: self.set_screen_flag("details", not self._screen_flags["details"]),
+                yield pystray.MenuItem("Cooler details", lambda i, it: self.set_screen_details(not self._screen_flags["details"]),
                                        checked=lambda it: bool(self._screen_flags.get("details")))
             yield pystray.Menu.SEPARATOR
             yield pystray.MenuItem("Open logs folder", lambda i, it: Api(self).open_logs())
@@ -2105,6 +2124,7 @@ def main():
     srv = single_instance()
     if srv is None:
         return
+    threading.Thread(target=rgb.wake_daemon, daemon=True, name="wake-daemon").start()  # while the window is still coming up
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_ID)
     log.info("packages: %s", "; ".join(applog._versions()))
     try:
