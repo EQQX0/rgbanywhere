@@ -150,6 +150,8 @@ class Handler(socketserver.StreamRequestHandler):
             line = self.rfile.readline(self.MAX_LINE + 1)
             if len(line) > self.MAX_LINE:
                 raise ValueError("request too long")
+            if not line.strip():  # connected and hung up without asking anything (the app checking the port is open)
+                return
             req = json.loads(line.decode("utf-8"))
             if not hmac.compare_digest(str(req.get("token", "")), _token):
                 raise PermissionError("bad token")
