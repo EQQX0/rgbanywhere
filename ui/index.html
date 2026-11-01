@@ -1454,11 +1454,22 @@ window.rgbHealth = h => {
       s = document.createElement("span"), x = document.createElement("button");
     row.className = "conflict"; text.className = "htext";
     b.textContent = c.name + " is running"; s.textContent = c.fix;
-    x.className = "btn"; x.textContent = "Got it";
-    x.onclick = () => {
+    x.className = "btn"; x.textContent = REMOTE ? "Got it" : "Close it";
+    const hide = () => {
       conflictOff.push(c.name);
       try { localStorage.setItem("conflictOff", JSON.stringify(conflictOff)); } catch (e) { }
       window.rgbHealth(lastHealth);
+    };
+    x.onclick = REMOTE ? hide : async () => {   // a phone can't close programs on the PC
+      x.disabled = true; x.textContent = "Closing…";
+      try {
+        const r = await api.close_conflict(c.name);
+        if (r.failed.length) {
+          toast(c.name + " is still running. It needs admin rights to close: quit it from its tray icon or Task Manager.", { kind: "bad", key: "conflict" });
+          x.disabled = false; x.textContent = "Hide"; x.onclick = hide;
+        } else toast(c.name + " closed", { kind: "ok", key: "conflict" });
+        window.rgbHealth(r.health);
+      } catch (e) { toast("Couldn't close " + c.name, { kind: "bad", key: "conflict" }); x.disabled = false; x.textContent = "Hide"; x.onclick = hide; }
     };
     text.append(b, s); row.append(text, x); box.append(row);
   }

@@ -465,6 +465,22 @@ class HealthTest(unittest.TestCase):
         self.assertEqual(a.forget_missing()["state"], "ok")
         self.assertEqual(a.state["device_names"], ["Mouse"])
 
+    def test_close_it_closes_only_a_listed_conflict(self):
+        a = health_app([], [])
+        a.conflicts, a.conflicts_at = [{"name": "Logitech G HUB", "fix": "x"}], 0
+        fake = mock.Mock(close_conflict=mock.Mock(return_value={"closed": ["lghub.exe"], "failed": []}),
+                         _running_conflicts=lambda: [], CONFLICT_FIX={})
+        with mock.patch.dict("sys.modules", {"diag": fake}):
+            res = a.close_conflict("Logitech G HUB")
+            with self.assertRaises(ValueError):
+                a.close_conflict("explorer.exe")
+        fake.close_conflict.assert_called_once_with("Logitech G HUB")
+        self.assertEqual(res["closed"], ["lghub.exe"])
+        self.assertEqual(res["health"]["conflicts"], [])
+
+    def test_a_phone_cannot_close_programs(self):
+        self.assertNotIn("close_conflict", m.PHONE_METHODS | m.CONTROL_METHODS)
+
     def test_our_own_openrgb_is_not_a_conflict(self):
         a = health_app([], [])
         with mock.patch.dict("sys.modules", {"diag": mock.Mock(_running_conflicts=lambda: ["OpenRGB", "Logitech G HUB"],
