@@ -109,7 +109,7 @@ PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "set_exit", 
                  "update_preset", "delete_preset", "restore_preset", "restore_screen", "rescan", "set_sync_accent",
                  "monitors_off", "save_profile", "update_profile", "delete_profile", "restore_profile",
                  "apply_profile", "calibrate", "set_calibration", "reset_calibration", "apply_screen", "discard_staged", "log_client",
-                 "set_screen_power", "set_screen_details"}
+                 "set_screen_power", "set_screen_details", "get_health", "fix_it"}
 APK_PATH = os.path.join(HERE, "android", "RGB-Control.apk")
 CALIBRATION_TIMEOUT = 600  # seconds: a phone that wanders off mid-calibration can't leave the lights on a test color
 RESCAN_GAP = 30  # seconds between rescans: restarting OpenRGB again sooner tends to cost a RAM stick
@@ -127,6 +127,12 @@ KEEP_COLORS = bool(rgb.CFG.get("keep_colors", True))  # config.json
 KEEP_IDLE_AFTER = 60  # seconds without input before coming back counts as "back from idle"
 KEEP_AFTER_IDLE = (0.5, 4)  # seconds after coming back at which the colors are sent again
 KEEP_AFTER_GAME = (2, 8, 20)  # seconds after a full-screen program appears (G HUB changes the lights a moment late)
+# A device that was there and is not any more (the keyboard after sleep) gets one rescan by itself, as a person would
+# press Rescan. A rescan can cost a RAM stick, so it is tried HEALTH_AUTO_FIXES times and then left to the Fix it button.
+AUTO_RECONNECT = bool(rgb.CFG.get("auto_reconnect", True))  # config.json
+HEALTH_EVERY = 20  # seconds between looks at the device list
+HEALTH_AUTO_FIXES = 2
+CONFLICTS_EVERY = 60  # seconds between looks at the running programs (tasklist is slow)
 CHECK_UPDATES = rgb.CFG.get("check_updates", True) is not False  # config.json: False = only the Check button asks GitHub
 UPDATE_EVERY = 6 * 3600  # seconds between checks for a new release
 UPDATE_CACHE = 3600  # seconds an answer is reused when the page asks again (reopening the window)
@@ -404,7 +410,8 @@ class PhoneHandler(Handler):
             elif u.path == "/api/poll":
                 a = self.app
                 self.send_json({"state": a.public_state(), "presets": a.presets, "profiles": a.profiles_public(),
-                                "status": a.status, "cooler": a.cooler_info(), "features": a.features(), "busy": a.busy_text, "msg": a.last_msg})
+                                "status": a.status, "cooler": a.cooler_info(), "features": a.features(), "busy": a.busy_text, "msg": a.last_msg,
+                                "health": a.health_view()})
             elif u.path.startswith(("/preview/", "/staged/", "/profiles/")):
                 Handler.do_GET(self)
             else:
@@ -606,6 +613,15 @@ class Api:
 
     def rescan(self):
         self._app.rescan()
+
+    def get_health(self):
+        return self._app.health_view()
+
+    def fix_it(self):
+        return self._app.fix_it()
+
+    def forget_missing(self):
+        return self._app.forget_missing()
 
     # ----- diagnostics -----
     def log_client(self, entry):
@@ -868,6 +884,10 @@ class App:
             with open(ACCENT_BACKUP, "w") as f:
                 json.dump(winaccent.snapshot(), f, indent=1)
         self.client = None
+        self.health = {"state": "starting", "devices": 0, "missing": [], "note": ""}  # see check_health
+        self.auto_fixes = 0   # rescans the app has done by itself for the current loss
+        self.conflicts = []   # other RGB programs running: [{"name", "fix"}]
+        self.conflicts_at = 0
         self.rescan_lock = threading.Lock()
         self.rescan_timer = None  # a rescan waiting for RESCAN_GAP to pass
         self.last_rescan = 0
@@ -1181,6 +1201,95 @@ class App:
                 log.exception("colors watcher hit an error (it keeps running)")
             time.sleep(2)
 
+    # ----- device health: reconnect by itself, tell the page what is wrong -----
+    def health_view(self):
+        return dict(self.health, conflicts=self.conflicts, status=list(self.status))
+
+    def _set_health(self, state, devices=None, missing=(), note=""):
+        new = {"state": state, "devices": self.health["devices"] if devices is None else devices,
+               "missing": list(missing), "note": note}
+        if new != self.health:
+            if new["state"] != self.health["state"]:
+                log.info("device health: %s -> %s %s", self.health["state"], state, note)
+            self.health = new
+            self.js("rgbHealth", self.health_view())
+        return self.health
+
+    def check_health(self):
+        """Look at the device list once. State is "ok"; "recovering" (a rescan is on its way); "lost" (devices that
+        were here are missing and the app has done what it can alone); or "down" (the lighting service is silent)."""
+        client = self.client
+        if client is None:
+            if self.rescan_timer or self.rescan_check:
+                return self._set_health("recovering", note="Looking for your devices again")
+            # "Connecting…" at startup is not a fault; a status of kind "bad" (the service did not start) is
+            return self._set_health("down" if self.status[1] == "bad" else "starting", note=self.status[0])
+        if self.rescan_check:  # the first connection after a rescan: after_rescan is still looking at it
+            return self._set_health("recovering", note="Looking for your devices again")
+        try:
+            rgb.prepare(client)  # asks the daemon for the device list again
+        except Exception as e:
+            log.warning("device health: the lighting service did not answer (%s: %s)", type(e).__name__, e)
+            return self._set_health("down", note="The lighting service isn't answering")
+        names = sorted({d.name for d in client.devices})
+        known = set(self.state.get("device_names", []))
+        if set(names) - known:  # a new device is simply added to what we expect
+            known |= set(names)
+            self.state["device_names"] = sorted(known)
+            rgb.save_state(self.state)
+        missing = sorted(known - set(names))
+        if not missing:
+            if self.health["state"] in ("lost", "recovering"):
+                log.info("device health: all %d devices are back", len(names))
+                applog.event("devices_back", ok=True, devices=len(names), auto_fixes=self.auto_fixes)
+            self.auto_fixes = 0
+            return self._set_health("ok", devices=len(names))
+        who = ", ".join(missing)
+        if (AUTO_RECONNECT and self.auto_fixes < HEALTH_AUTO_FIXES and self.state.get("mode") != "original"
+                and not icue.running()):
+            self.auto_fixes += 1
+            log.warning("device health: %s missing; rescanning by itself (%d of %d)", who, self.auto_fixes, HEALTH_AUTO_FIXES)
+            applog.event("auto_reconnect", ok=True, missing=missing, attempt=self.auto_fixes)
+            self._set_health("recovering", devices=len(names), missing=missing, note="Looking for %s again" % who)
+            self.rescan()
+            return self.health
+        return self._set_health("lost", devices=len(names), missing=missing, note="%s not found" % who)
+
+    def check_conflicts(self):
+        """Other programs that drive the same lights. Our own bundled OpenRGB is not one of them."""
+        import diag
+        self.conflicts = [{"name": c, "fix": diag.CONFLICT_FIX.get(
+            c, "Quit it, or turn off its lighting, so only one program drives the lights.")}
+            for c in diag._running_conflicts() if c != "OpenRGB"]
+
+    def health_watch(self):
+        while True:
+            try:
+                self.check_health()
+                if time.time() - self.conflicts_at > CONFLICTS_EVERY:
+                    self.conflicts_at = time.time()
+                    self.check_conflicts()
+                    self.js("rgbHealth", self.health_view())
+            except Exception:
+                log.exception("health watcher hit an error (it keeps running)")
+            time.sleep(HEALTH_EVERY)
+
+    def fix_it(self):
+        """The Fix it button: forget what the app tried alone and do what a person would: rescan, reconnect, send colors."""
+        self.auto_fixes = 0
+        applog.event("fix_it", ok=True, health=self.health["state"], missing=self.health["missing"])
+        self.rescan()
+        return self.health_view()
+
+    def forget_missing(self):
+        """A device was unplugged for good: stop expecting it."""
+        if self.client is not None:
+            self.state["device_names"] = sorted({d.name for d in self.client.devices})
+            rgb.save_state(self.state)
+            applog.event("forget_missing", ok=True, devices=len(self.state["device_names"]))
+        self.check_health()
+        return self.health_view()
+
     def wake_watch(self):
         """Lights switched off together with the monitors come back on at the first keyboard/mouse input, the same
         moment Windows wakes the monitors. Armed by monitors_off(wake_lights=True) once the monitors really went off."""
@@ -1309,6 +1418,9 @@ class App:
         except Exception as e:  # DeepCool may be rewriting its database right now: keep the last answer
             log.debug("can't read the cooler's screen switches: %s: %s", type(e).__name__, e)
             flags = self._screen_flags
+        if flags != self._screen_flags and self.tray:
+            self._screen_flags = flags
+            self.tray.update_menu()  # its cooler switches show the new state
         self._screen_flags = flags
         return dict({"live": deepcool_running(), "name": name or default_name(src),
                      "url": "/preview/" + os.path.basename(dst)}, **flags)
@@ -1752,7 +1864,14 @@ class App:
             yield pystray.Menu.SEPARATOR
             yield pystray.MenuItem("Lights on", lambda i, it: self.set_mode("static"))
             yield pystray.MenuItem("Lights off", lambda i, it: self.set_mode("off"))
+            yield pystray.MenuItem("Fix it", lambda i, it: self.fix_it())
             yield pystray.MenuItem("Rescan devices", lambda i, it: self.rescan())
+            if cooler.installed() and self._screen_flags:
+                yield pystray.Menu.SEPARATOR
+                yield pystray.MenuItem("Cooler screen on", lambda i, it: self.set_screen_flag("power", not self._screen_flags["power"]),
+                                       checked=lambda it: bool(self._screen_flags.get("power")))
+                yield pystray.MenuItem("Cooler details", lambda i, it: self.set_screen_flag("details", not self._screen_flags["details"]),
+                                       checked=lambda it: bool(self._screen_flags.get("details")))
             yield pystray.Menu.SEPARATOR
             yield pystray.MenuItem("Open logs folder", lambda i, it: Api(self).open_logs())
             yield pystray.MenuItem("Save debug report", lambda i, it: Api(self).save_report())
@@ -2007,7 +2126,7 @@ def main():
         for name, target in (("lights", app.rgb_worker), ("cooler-watch", app.cooler_watch), ("single-instance", listen),
                              ("icue-watch", functools.partial(icue.watch, app.rescan)), ("idle-watch", app.idle_watch),
                              ("wake-watch", app.wake_watch), ("keep-colors", app.keep_watch),
-                             ("update-watch", app.update_watch)):
+                             ("health", app.health_watch), ("update-watch", app.update_watch)):
             if name == "idle-watch" and not IDLE_RESCAN:
                 continue
             if name == "keep-colors" and not KEEP_COLORS:

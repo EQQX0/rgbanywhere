@@ -104,6 +104,8 @@ From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit f
 | `helper_service` | A Windows service that disturbs RAM detection. It stops during rescans |
 | `preferred_monitor` | Part of a monitor's hardware ID, such as `MSI`. The window opens on that screen |
 | `idle_rescan` | `true` rescans when you return to an idle PC (for Logitech G HUB, which sleeps keyboard and mouse lights) |
+| `keep_colors` | `true` (default) sends your colors again when you return from idle and when a game goes full screen, so Logitech G HUB or a game profile can't leave the keyboard on its own colors |
+| `auto_reconnect` | `true` (default) rescans by itself, up to twice, when a device that was there goes missing (the keyboard after sleep). The **Fix it** button and tray item start the same rescan on demand. `false` leaves it to you |
 | `icue_quit_on_close` | `true` makes iCUE's X button quit iCUE. Running iCUE together with this app can knock Corsair RAM into a state where it ignores colors |
 | `revive_ram` | `true` (default) lets Rescan fix Corsair RAM that ignores colours (a stick stuck in bootloader mode). If iCUE is installed and closed, Rescan opens it minimized for up to a minute so Corsair's service switches the stick back, then quits it. If that fails, the next rescans within 3 minutes skip it. `false` turns this off |
 | `check_updates` | `true` (default) checks GitHub for a new release when the app starts and every six hours. `false` stops the automatic checks; **Check for updates** in Diagnostics still works |

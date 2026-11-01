@@ -45,7 +45,8 @@ CONFLICT_FIX = {
     "Corsair iCUE": "Quit it from the tray. Running it together with RGB Anywhere can knock Corsair RAM into a mode where "
                     "it ignores colours; set icue_quit_on_close in config.json.",
     "ASUS Armoury Crate": "Turn off its Aura Sync lighting, or quit it and its lighting service.",
-    "Logitech G HUB": "G HUB also sleeps keyboard and mouse lights when the PC is idle; see idle_rescan in config.json.",
+    "Logitech G HUB": "G HUB repaints the keyboard and mouse after idle and when a game starts; RGB Anywhere sends its colors "
+                      "again each time. To stop it for good, set those devices' lighting to off or Static in G HUB.",
 }
 
 

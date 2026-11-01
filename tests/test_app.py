@@ -368,6 +368,112 @@ class KeepColorsTest(unittest.TestCase):
         self.resend(a, (1,)).assert_not_called()
 
 
+class Dev:
+    def __init__(self, name):
+        self.name = name
+
+
+def health_app(known, present, **state):
+    """An App whose client shows the `present` devices while the `known` ones are expected."""
+    a = bare_app(device_names=list(known), **state)
+    a.client = mock.Mock(devices=[Dev(n) for n in present])
+    a.health = {"state": "starting", "devices": 0, "missing": [], "note": ""}
+    a.auto_fixes, a.conflicts, a.status = 0, [], ["", "ok"]
+    a.rescan_timer, a.rescan_check = None, False
+    return a
+
+
+class HealthTest(unittest.TestCase):
+    def setUp(self):
+        for target, kw in ((m.rgb, {"prepare": mock.DEFAULT}), (m.rgb, {"save_state": mock.DEFAULT}),
+                           (m.icue, {"running": mock.DEFAULT})):
+            p = mock.patch.multiple(target, **kw)
+            self.mocks = p.start()
+            self.addCleanup(p.stop)
+        m.icue.running.return_value = False
+
+    def test_all_devices_present_is_ok(self):
+        a = health_app(["Keyboard", "Mouse"], ["Keyboard", "Mouse"])
+        self.assertEqual(a.check_health()["state"], "ok")
+        a.rescan.assert_not_called()
+
+    def test_a_missing_keyboard_is_rescanned_by_itself(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        h = a.check_health()
+        self.assertEqual((h["state"], h["missing"]), ("recovering", ["Keyboard"]))
+        a.rescan.assert_called_once()
+
+    def test_after_two_tries_it_waits_for_the_fix_it_button(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        for _ in range(m.HEALTH_AUTO_FIXES):
+            a.check_health()
+        self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES)
+        self.assertEqual(a.check_health()["state"], "lost")
+        self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES)
+
+    def test_the_fix_it_button_starts_again(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        a.auto_fixes = m.HEALTH_AUTO_FIXES
+        a.fix_it()
+        self.assertEqual(a.auto_fixes, 0)
+        a.rescan.assert_called_once()
+
+    def test_coming_back_resets_the_tries(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        a.check_health()
+        a.client.devices = [Dev("Keyboard"), Dev("Mouse")]
+        self.assertEqual(a.check_health()["state"], "ok")
+        self.assertEqual(a.auto_fixes, 0)
+
+    def test_vendor_app_lighting_is_never_rescanned_over(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"], mode="original")
+        self.assertEqual(a.check_health()["state"], "lost")
+        a.rescan.assert_not_called()
+
+    def test_icue_open_means_no_automatic_rescan(self):
+        m.icue.running.return_value = True
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        self.assertEqual(a.check_health()["state"], "lost")
+        a.rescan.assert_not_called()
+
+    def test_a_new_device_is_remembered_not_reported(self):
+        a = health_app(["Keyboard"], ["Keyboard", "Mouse"])
+        self.assertEqual(a.check_health()["state"], "ok")
+        self.assertEqual(a.state["device_names"], ["Keyboard", "Mouse"])
+
+    def test_a_silent_daemon_is_down(self):
+        a = health_app(["Keyboard"], ["Keyboard"])
+        m.rgb.prepare.side_effect = OSError("pipe closed")
+        self.assertEqual(a.check_health()["state"], "down")
+        a.rescan.assert_not_called()
+
+    def test_connecting_at_startup_is_not_a_fault(self):
+        a = health_app(["Keyboard"], [])
+        a.client, a.status = None, ["Connecting…", "warn"]
+        self.assertEqual(a.check_health()["state"], "starting")
+        a.status = ["Lighting service not running", "bad"]
+        self.assertEqual(a.check_health()["state"], "down")
+
+    def test_no_client_while_a_rescan_runs_is_recovering(self):
+        a = health_app(["Keyboard"], [])
+        a.client, a.rescan_check = None, True
+        self.assertEqual(a.check_health()["state"], "recovering")
+
+    def test_forgetting_a_device_stops_the_alarm(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        a.auto_fixes = m.HEALTH_AUTO_FIXES
+        self.assertEqual(a.forget_missing()["state"], "ok")
+        self.assertEqual(a.state["device_names"], ["Mouse"])
+
+    def test_our_own_openrgb_is_not_a_conflict(self):
+        a = health_app([], [])
+        with mock.patch.dict("sys.modules", {"diag": mock.Mock(_running_conflicts=lambda: ["OpenRGB", "Logitech G HUB"],
+                                                                 CONFLICT_FIX={"Logitech G HUB": "turn it off"})}):
+            a.check_conflicts()
+        self.assertEqual([c["name"] for c in a.conflicts], ["Logitech G HUB"])
+        self.assertEqual(a.conflicts[0]["fix"], "turn it off")
+
+
 class PreviewTest(unittest.TestCase):
     def test_two_threads_asking_at_once_both_get_the_preview(self):
         with tempfile.TemporaryDirectory() as tmp:
