@@ -1421,6 +1421,7 @@ let lastHealth = null;
 window.rgbHealth = h => {
   if (!h) return;
   lastHealth = h;
+  if (h.status) window.rgbStatus(h.status[0], h.status[1]);   // the pill can't miss an update sent while the window was hidden
   const bad = ["lost", "down", "recovering"].includes(h.state);
   const open = (h.conflicts || []).filter(c => !conflictOff.includes(c.name));
   const bar = $("health");
@@ -1930,6 +1931,9 @@ window.addEventListener("pywebviewready", async () => {
   window.rgbStatus(init.status[0], init.status[1]);
   setCooler(init.cooler);
   api.get_health().then(window.rgbHealth).catch(() => {});
+  // The app pushes status to the window, but a push to a hidden or still-loading window is lost, which left the pill on
+  // "Connecting…" after the lights were long connected. The desktop window asks again every few seconds (a phone polls).
+  if (!REMOTE) setInterval(() => { if (!document.hidden) api.get_health().then(window.rgbHealth).catch(() => {}); }, 3000);
   if (!REMOTE) loadDiag().catch(() => {});   // shows a red count on the Logs button if something failed recently
   if (!REMOTE) checkUpd(false);              // shows the Update button if a newer release is out
 });
