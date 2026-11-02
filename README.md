@@ -57,7 +57,9 @@ The unit tests need only Python and `openrgb-python`. They run against a stub Op
 python -m unittest discover -s tests -v
 ```
 
-To build the Android app, run `android/build.ps1`. It needs a JDK and the Android SDK, and it signs with a key you create (`android/rgb-control.keystore`, never committed).
+To build the Android app, run `powershell -File android/build.ps1 -Version 0.4.5`, using the version of the release it belongs to. It needs a JDK 21. The script downloads the Android SDK pieces it needs on the first run and writes `android/RGB-Anywhere.apk`. It signs with a key it creates at `android/rgb-control.keystore`, which is never committed. Keep a backup of that file: phones only accept an update signed with the same key.
+
+The app updates itself. On launch it checks the latest GitHub release for an `RGB-Anywhere.apk` that publishes a SHA-256 checksum. If that release is newer, an Update button appears. The app checks the download against the checksum, then hands it to Android's installer, which asks you to confirm. To ship an update, build with the new version and attach the APK to the release: `gh release upload v0.4.6 android/RGB-Anywhere.apk`.
 
 ## How devices are grouped
 

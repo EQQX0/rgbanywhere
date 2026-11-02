@@ -6,8 +6,11 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.content.pm.PackageInstaller;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -62,6 +65,12 @@ public class MainActivity extends Activity {
     ValueCallback<Uri[]> fileCallback;
     volatile boolean discovering;
     boolean pageFailed;
+    LinearLayout updateBar;
+    TextView updateNote;
+    Button updateBtn;
+    Updater.Release pending;
+    boolean updating;
+    long lastUpdateCheck;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -69,13 +78,91 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("pair", MODE_PRIVATE);
         buildUi();
         if (!handlePairIntent(getIntent())) start();
+        checkForUpdate();
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (handleInstallResult(intent)) return;
         handlePairIntent(intent);
+    }
+
+    // ------------------------------------------------------------------ app updates
+    String installedVersion() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; } catch (Exception e) { return "0"; }
+    }
+
+    /** Looks for a newer release in the background; a failure (offline, rate limit) is silent. */
+    void checkForUpdate() {
+        if (updating) return;
+        lastUpdateCheck = System.currentTimeMillis();
+        new Thread(() -> {
+            Updater.Release r = null;
+            try { r = Updater.latest(); } catch (Exception ignored) { }
+            final Updater.Release rel = r;
+            runOnUiThread(() -> {
+                if (rel != null && Updater.newer(rel.version, installedVersion())) {
+                    pending = rel;
+                    updateBtn.setText("Update to " + rel.version);
+                    updateBtn.setEnabled(true);
+                    updateNote.setText("");
+                    updateNote.setVisibility(View.GONE);
+                    updateBar.setVisibility(View.VISIBLE);
+                } else if (!updating) {
+                    pending = null;
+                    updateBar.setVisibility(View.GONE);
+                }
+            });
+        }).start();
+    }
+
+    void updateFailed(String msg) {
+        updating = false;
+        updateBtn.setEnabled(true);
+        updateBtn.setText("Try the update again");
+        updateNote.setText(msg);
+        updateNote.setVisibility(View.VISIBLE);
+    }
+
+    void startUpdate() {
+        if (pending == null || updating) return;
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            updateNote.setText("Allow RGB Anywhere to install apps on the next screen, then come back and tap Update again.");
+            updateNote.setVisibility(View.VISIBLE);
+            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
+            return;
+        }
+        updating = true;
+        updateBtn.setEnabled(false);
+        updateBtn.setText("Downloading… 0%");
+        updateNote.setVisibility(View.GONE);
+        final Updater.Release rel = pending;
+        new Thread(() -> {
+            try {
+                java.io.File apk = Updater.download(this, rel, p -> runOnUiThread(() -> updateBtn.setText("Downloading… " + p + "%")));
+                runOnUiThread(() -> updateBtn.setText("Installing…"));
+                Updater.install(this, apk);
+            } catch (SecurityException e) {
+                runOnUiThread(() -> updateFailed("The download didn't match its checksum, so it was thrown away."));
+            } catch (Exception e) {
+                runOnUiThread(() -> updateFailed("Couldn't download the update. Check your connection and try again."));
+            }
+        }).start();
+    }
+
+    /** The system installer reports back here: show its confirmation, or note that it didn't go through. */
+    boolean handleInstallResult(Intent i) {
+        if (i == null || !Updater.ACTION_RESULT.equals(i.getAction())) return false;
+        int status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirm != null) startActivity(confirm);
+        } else if (status != PackageInstaller.STATUS_SUCCESS) {
+            updateFailed("Android didn't install the update. You can try again.");
+        }
+        return true;
     }
 
     // ------------------------------------------------------------------ pairing
@@ -263,6 +350,26 @@ public class MainActivity extends Activity {
         offlineView.addView(pairBtn);
         root.addView(offlineView, new FrameLayout.LayoutParams(-1, -1));
 
+        // --- update available: a bar over everything else, at the bottom where a thumb reaches it
+        updateBar = new LinearLayout(this);
+        updateBar.setOrientation(LinearLayout.VERTICAL);
+        updateBar.setPadding(dp(16), dp(6), dp(16), dp(16));
+        GradientDrawable ug = new GradientDrawable();
+        ug.setColor(BG);
+        ug.setStroke(dp(1), 0x33FFFFFF);
+        ug.setCornerRadii(new float[]{dp(16), dp(16), dp(16), dp(16), 0, 0, 0, 0});
+        updateBar.setBackground(ug);
+        updateBar.setElevation(dp(8));
+        updateBar.setClickable(true);
+        updateBar.setVisibility(View.GONE);
+        updateNote = text("", 14, MUTED, false);
+        updateNote.setPadding(0, dp(8), 0, 0);
+        updateNote.setVisibility(View.GONE);
+        updateBtn = button("Update", true, v -> startUpdate());
+        updateBar.addView(updateBtn);
+        updateBar.addView(updateNote);
+        root.addView(updateBar, new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM));
+
         setContentView(root);
     }
 
@@ -390,6 +497,7 @@ public class MainActivity extends Activity {
         web.onResume();
         // coming back after the phone slept / changed Wi-Fi: reload if the page had failed
         if (pageFailed && host() != null && !discovering) start();
+        if (System.currentTimeMillis() - lastUpdateCheck > 30 * 60 * 1000L) checkForUpdate();
     }
 
     @Override
