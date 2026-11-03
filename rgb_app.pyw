@@ -855,7 +855,7 @@ Api = _logged_api(Api)
 
 class App:
     def __init__(self):
-        self.state = rgb.load_state()
+        self.state = rgb.lights_on_at_start(rgb.load_state())
         if self.state["mode"] not in ("static", "off", "original"):
             self.state["mode"] = "static"
         self.presets = self.state.setdefault("presets", json.loads(json.dumps(DEFAULT_PRESETS)))

@@ -262,8 +262,8 @@ class WatchTest(unittest.TestCase):
                 a.wake_watch()
         self.assertEqual(a.set_mode.call_count, 1)  # the error was logged and the loop went on to the next round
 
-    def test_lights_saved_as_off_wait_for_input_after_a_restart(self):
-        with tempfile.TemporaryDirectory() as tmp:
+    def test_lights_saved_as_off_wait_for_input_after_a_restart_when_start_on_is_switched_off(self):
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(m.rgb.CFG, {"start_lights_on": False}):
             backup = os.path.join(tmp, "accent_backup.json")
             open(backup, "w").close()
             for mode, armed in (("off", True), ("static", False)):
@@ -272,6 +272,15 @@ class WatchTest(unittest.TestCase):
                         mock.patch.object(m.App, "_drop_orphan_profile_files"), mock.patch.object(m, "ACCENT_BACKUP", backup):
                     a = m.App()
                 self.assertEqual(bool(a.wake_armed_at), armed, mode)
+
+    def test_lights_saved_as_off_start_on_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backup = os.path.join(tmp, "accent_backup.json")
+            open(backup, "w").close()
+            state = {"mode": "off", "color": "0000FF", "groups": {}, "phone_token": "t" * 22}
+            with mock.patch.object(m.rgb, "load_state", return_value=state), mock.patch.object(m.rgb, "save_state"),                     mock.patch.object(m.App, "_drop_orphan_profile_files"), mock.patch.object(m, "ACCENT_BACKUP", backup):
+                a = m.App()
+            self.assertEqual((a.state["mode"], a.wake_armed_at), ("static", 0))
 
     def test_idle_watch_survives_an_error(self):
         a = bare_app()

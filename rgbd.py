@@ -37,11 +37,21 @@ REVIVE_PAUSE = 180  # the app's follow-up rescans land inside this; they would o
 BOOT_RETRY_PAUSES = (30, 60, 120)  # seconds before each rescan for a known device that start-up did not find
 
 
+_applied_once = False
+
+
+def _first_apply():
+    """True for the first colours applied after the daemon starts: lights saved as off come back on then."""
+    global _applied_once
+    first, _applied_once = not _applied_once, True
+    return first
+
+
 def _refresh_and_apply():
     _client.update()
     rgb.remember_originals(_core)  # before anything here changes a device (prepare resizes headers)
     rgb.prepare(_client)
-    rgb.apply(_client, rgb.load_state())
+    rgb.apply(_client, rgb.lights_on_at_start(rgb.load_state()) if _first_apply() else rgb.load_state())
 
 
 def _log_diagnosis():

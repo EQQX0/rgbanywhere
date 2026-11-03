@@ -89,6 +89,12 @@ class DaemonLogicTest(unittest.TestCase):
             rgbd._boot_retries((0, 0, 0))
         self.assertEqual(rescan.call_count, 3)
 
+    def test_lights_saved_as_off_come_back_on_at_start(self):
+        self.assertEqual(rgb.lights_on_at_start({"mode": "off"})["mode"], "static")
+        self.assertEqual(rgb.lights_on_at_start({"mode": "original"})["mode"], "original")
+        with mock.patch.dict(rgb.CFG, {"start_lights_on": False}):
+            self.assertEqual(rgb.lights_on_at_start({"mode": "off"})["mode"], "off")
+
     def test_helper_is_started_again_even_when_the_rescan_fails(self):
         started = []
         core = mock.Mock()

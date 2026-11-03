@@ -141,6 +141,13 @@ def group_of(dev):
     return "other"
 
 
+def lights_on_at_start(state):
+    """Lights saved as off come back on when the program starts (config.json "start_lights_on": false keeps them off)."""
+    if state.get("mode") == "off" and CFG.get("start_lights_on", True) is not False:
+        state["mode"] = "static"
+    return state
+
+
 def load_state():
     state = {"color": "0000FF", "mode": "static", "groups": {}, "brightness": 100}
     try:
