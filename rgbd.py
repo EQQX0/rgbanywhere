@@ -195,11 +195,6 @@ class Handler(socketserver.StreamRequestHandler):
                 _rescan(); res = None
             elif cmd == "restore":  # the saved copy lives with the daemon, so a client never sends one
                 res = _need_core().restore(rgb.restorable()[0])
-            elif cmd == "close_conflict":  # this process is elevated, the app is not: only it can end admin programs
-                label = str(req["label"])
-                if label not in diag.CONFLICTS.values() or label == "OpenRGB":
-                    raise ValueError("%r is not a program that can be closed" % label)
-                res = diag.close_conflict(label)
             elif cmd == "busy":  # a start, rescan or re-apply is running (the app waits for a rescan to end)
                 res = _busy.locked()
             else:

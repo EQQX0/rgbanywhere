@@ -628,8 +628,6 @@ class Api:
     def forget_missing(self):
         return self._app.forget_missing()
 
-    def close_conflict(self, name):
-        return self._app.close_conflict(str(name))
 
     # ----- diagnostics -----
     def log_client(self, entry):
@@ -1302,25 +1300,6 @@ class App:
         self.conflicts = [{"name": c, "fix": diag.CONFLICT_FIX.get(
             c, "Quit it, or turn off its lighting, so only one program drives the lights.")}
             for c in diag._running_conflicts() if c != "OpenRGB"]
-
-    def close_conflict(self, name):
-        """The Close it button: quit the program that fights for the lights. Only a program the app itself listed can be
-        closed, so a page can't aim this at anything else."""
-        import diag
-        if name not in {c["name"] for c in self.conflicts}:
-            raise ValueError("%s is not one of the programs listed as a conflict" % name)
-        try:  # the lighting service runs as admin, so it can end admin programs (Armoury Crate); the app cannot
-            res = rgb.rgbcore_client.RemoteBackend(timeout=60).request("close_conflict", label=name)
-        except Exception as e:
-            log.warning("the lighting service could not close %s (%s: %s); trying from the app", name, type(e).__name__, e)
-            res = diag.close_conflict(name)
-        log.info("closed %s: %s", name, res)
-        applog.event("close_conflict", ok=not res["failed"], program=name, **res)
-        self.check_conflicts()
-        self.conflicts_at = time.time()
-        view = self.health_view()
-        self.js("rgbHealth", view)
-        return dict(res, health=view)
 
     def health_watch(self):
         while True:

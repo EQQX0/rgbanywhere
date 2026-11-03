@@ -486,10 +486,9 @@
   .health .hmark { width: 10px; height: 10px; border-radius: 50%; background: var(--warn); flex: none; }
   .health[data-state="lost"] .hmark, .health[data-state="down"] .hmark { background: var(--bad); }
   .health[data-state="recovering"] .hmark { animation: pulse 1.2s infinite; }
-  .health .conflict { display: flex; align-items: flex-start; gap: 12px; padding-top: 12px; }
-  .health .conflict .htext b { font-size: 14px; }
-  .health.only-conflicts .hrow.main { display: none; }
-  .health.only-conflicts .conflict:first-of-type { padding-top: 0; }
+  .conflictlist { margin: 12px 0 0; display: grid; gap: 8px; }
+  .conflictlist div { font-size: 13px; line-height: 1.4; }
+  .conflictlist b { display: block; font-size: 14px; }
   .banner b { display: block; font-size: 14.5px; }
   .banner span { color: #b4b4c0; font-size: 12.5px; line-height: 1.5; }
   .banner .rowbtns .btn { height: 42px; text-decoration: none; color: var(--text); }
@@ -617,7 +616,6 @@
       <button class="btn primary" id="fixIt" style="flex:none">Fix it</button>
       <button class="btn" id="forgetMissing" hidden title="This device is not plugged in any more: stop looking for it">It's unplugged</button>
     </div>
-    <div id="conflicts"></div>
   </section>
 
   <div class="banner" id="appBanner" role="region" aria-label="Android app">
@@ -730,6 +728,7 @@
     <p>Everything the app does is written to log files, including attempts that failed, with the technical details.
        That makes problems possible to track down and fix later.</p>
     <div class="switchrow"><span class="vertext" id="verText" role="status">Version</span><button class="btn" id="verCheck">Check for updates</button></div>
+    <div class="conflictlist" id="diagConflicts" hidden></div>
     <div class="diagsum" id="diagSum" role="status"></div>
     <div class="diagpath" id="diagPath"></div>
     <div class="diaglist" id="diagList" tabindex="0" aria-label="Recent activity"></div>
@@ -1415,20 +1414,15 @@ window.addEventListener("drop", e => { e.preventDefault(); depth = 0; $("bezel")
 window.rgbStatus = (text, kind) => { $("statusText").textContent = text; $("statusDot").className = "dot " + kind; };
 
 // Device health: shown only when a device is missing, the lighting service is silent, or another program fights for the lights.
-const conflictNote = {};   // why Close it did not work, shown in place of the advice
-let conflictOff = [];
-try { conflictOff = JSON.parse(localStorage.getItem("conflictOff") || "[]"); } catch (e) { }
 let lastHealth = null;
 window.rgbHealth = h => {
   if (!h) return;
   lastHealth = h;
   if (h.status) window.rgbStatus(h.status[0], h.status[1]);   // the pill can't miss an update sent while the window was hidden
   const bad = ["lost", "down", "recovering"].includes(h.state);
-  const open = (h.conflicts || []).filter(c => !conflictOff.includes(c.name));
   const bar = $("health");
   bar.dataset.state = h.state;
-  bar.classList.toggle("on", bad || open.length > 0);
-  bar.classList.toggle("only-conflicts", !bad);
+  bar.classList.toggle("on", bad);
   const missing = h.missing || [];
   $("healthTitle").textContent = h.state === "lost" ? missing.join(", ") + (missing.length > 1 ? " were not found" : " was not found")
     : h.state === "recovering" ? "Looking for your devices again" : h.state === "down" ? "The lighting service isn't answering" : "";
@@ -1437,40 +1431,18 @@ window.rgbHealth = h => {
     : h.state === "down" ? "Press Fix it to restart it." : "";
   $("fixIt").hidden = h.state === "recovering";
   $("forgetMissing").hidden = REMOTE || !(h.state === "lost" && missing.length);   // a phone can't change what the PC expects
-  const box = $("conflicts");
+  const names = (h.conflicts || []).map(c => c.name);   // other programs that drive the same lights: told quietly, not as a banner
+  $("statusText").parentElement.title = names.length ? names.join(", ") + (names.length > 1 ? " are" : " is") +
+    " running and may fight for the lights. Details: Diagnostics." : "";
+  const box = $("diagConflicts");
   box.textContent = "";
-  for (const c of open) {
-    const row = document.createElement("div"), text = document.createElement("div"), b = document.createElement("b"),
-      s = document.createElement("span"), x = document.createElement("button");
-    row.className = "conflict"; text.className = "htext";
-    b.textContent = c.name + " is running"; s.textContent = conflictNote[c.name] || c.fix;
-    x.className = "btn"; x.textContent = REMOTE ? "Got it" : "Close it";
-    const hide = () => {
-      conflictOff.push(c.name);
-      try { localStorage.setItem("conflictOff", JSON.stringify(conflictOff)); } catch (e) { }
-      window.rgbHealth(lastHealth);
-    };
-    x.onclick = REMOTE ? hide : async () => {   // a phone can't close programs on the PC
-      x.disabled = true; x.textContent = "Closing…";
-      try {
-        const r = await api.close_conflict(c.name);
-        const back = (r.health.conflicts || []).some(k => k.name === c.name);   // it came back or never left
-        if (r.failed.length || back) {
-          const why = r.failed.length ? "Couldn't end " + r.failed.join(", ") + ". Quit it from its tray icon or Task Manager."
-            : "It started again by itself. Quit it from its tray icon, or turn off its lighting in its settings.";
-          toast(c.name + " is still running. " + why, { kind: "bad", key: "conflict" });
-          conflictNote[c.name] = why;
-          x.disabled = false; x.textContent = "Hide"; x.onclick = hide;
-        } else { delete conflictNote[c.name]; toast(c.name + " closed", { kind: "ok", key: "conflict" }); }
-        window.rgbHealth(r.health);
-      } catch (e) {
-        conflictNote[c.name] = "Couldn't close it (" + e + ").";
-        toast("Couldn't close " + c.name, { kind: "bad", key: "conflict" }); x.disabled = false; x.textContent = "Hide"; x.onclick = hide;
-        window.rgbHealth(lastHealth);
-      }
-    };
-    text.append(b, s); row.append(text, x); box.append(row);
+  box.hidden = !names.length;
+  for (const c of h.conflicts || []) {
+    const row = document.createElement("div"), b = document.createElement("b"), t = document.createElement("span");
+    b.textContent = c.name + " is running"; t.textContent = c.fix;
+    row.append(b, t); box.append(row);
   }
+
 };
 $("fixIt").onclick = () => { api.fix_it(); toast("Rescanning devices…", { kind: "info", key: "rescan" }); };
 $("forgetMissing").onclick = async () => { window.rgbHealth(await api.forget_missing()); };

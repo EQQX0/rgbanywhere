@@ -67,30 +67,6 @@ def _running_conflicts(own_pids=()):
     return sorted({label for exe, label in CONFLICTS.items() if exe in names})
 
 
-def close_conflict(label, sleep=time.sleep):
-    """Close every running program that belongs to `label` (a value of CONFLICTS). Asks politely first (taskkill without
-    /F lets it save and exit), then forces what is still there. Returns {"closed": [...], "failed": [...]} of exe
-    names; a service running as SYSTEM can't be closed from a normal process, so it ends up in "failed"."""
-    exes = sorted(exe for exe, name in CONFLICTS.items() if name == label and exe != "openrgb.exe")
-
-    def running():
-        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, errors="ignore",
-                           timeout=20, creationflags=0x08000000)
-        return {row[0].lower() for row in csv.reader(r.stdout.splitlines()) if row}
-
-    def kill(exe, force):
-        subprocess.run(["taskkill", "/IM", exe, "/T"] + (["/F"] if force else []), capture_output=True, text=True,
-                       errors="ignore", timeout=20, creationflags=0x08000000)
-
-    was = [e for e in exes if e in running()]
-    for force in (False, True):
-        for exe in [e for e in was if e in running()]:
-            kill(exe, force)
-        sleep(2)
-    left = running()
-    return {"closed": [e for e in was if e not in left], "failed": [e for e in was if e in left]}
-
-
 def service_exit_code(name):
     """The Win32 exit code `sc query` reports for a stopped service (31 = driver failed to load, 1072 = marked for
     deletion), or None. Found by its "31  (0x1f)" shape, not its label, which some Windows languages translate."""

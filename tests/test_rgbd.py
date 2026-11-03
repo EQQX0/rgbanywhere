@@ -89,22 +89,6 @@ class DaemonLogicTest(unittest.TestCase):
             rgbd._boot_retries((0, 0, 0))
         self.assertEqual(rescan.call_count, 3)
 
-    def test_only_a_listed_program_can_be_closed_through_the_daemon(self):
-        import io
-        import json
-        def ask(label):
-            h = rgbd.Handler.__new__(rgbd.Handler)
-            h.rfile = io.BytesIO((json.dumps({"token": "t", "cmd": "close_conflict", "label": label}) + chr(10)).encode())
-            h.wfile = io.BytesIO()
-            with mock.patch.object(rgbd, "_token", "t"),                     mock.patch.object(rgbd.diag, "close_conflict", return_value={"closed": ["x"], "failed": []}) as c:
-                h.handle()
-            return json.loads(h.wfile.getvalue()), c
-        out, c = ask("ASUS Armoury Crate")
-        self.assertTrue(out["ok"]); c.assert_called_once_with("ASUS Armoury Crate")
-        for bad in ("OpenRGB", "explorer.exe"):
-            out, c = ask(bad)
-            self.assertFalse(out["ok"]); c.assert_not_called()
-
     def test_helper_is_started_again_even_when_the_rescan_fails(self):
         started = []
         core = mock.Mock()
