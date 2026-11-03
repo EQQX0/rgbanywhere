@@ -5,9 +5,21 @@
 #   -NoStartup  do not start the app at login
 #   -Desktop    put the shortcut on the desktop instead of the Start menu
 #   -Quiet      for the Setup exe: no prompts, log to install.log, exit code 1 on failure, start the lighting daemon at the end
-param([switch]$NoStartup, [switch]$Desktop, [switch]$Quiet)
+#   -AllowUnprotected  install from a folder outside Program Files (a source checkout or an unpacked zip), see below
+param([switch]$NoStartup, [switch]$Desktop, [switch]$Quiet, [switch]$AllowUnprotected)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# The lighting daemon runs this folder's code as admin, so anything that can change the folder gets admin at next logon.
+# Outside Program Files that is every program running as you: refuse, before asking for admin, unless told otherwise.
+$inProgramFiles = [bool](@($env:ProgramFiles, $env:ProgramW6432) | Where-Object { $_ -and
+        $here.StartsWith($_.TrimEnd('') + '', [StringComparison]::OrdinalIgnoreCase) })
+if (-not $inProgramFiles -and -not $AllowUnprotected) {
+    Write-Host ("This folder is not in Program Files, so any program running as you could change the code the lighting " +
+                "service runs as admin. Install with Setup (RGB-Anywhere-Setup.exe), or, if you accept that (for example " +
+                "for development), run this again with -AllowUnprotected.")
+    exit 1
+}
 
 # Re-launch elevated
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -16,6 +28,7 @@ if (-not $admin) {
     if ($NoStartup) { $a += '-NoStartup' }
     if ($Desktop) { $a += '-Desktop' }
     if ($Quiet) { $a += '-Quiet' }
+    if ($AllowUnprotected) { $a += '-AllowUnprotected' }
     Start-Process powershell -Verb RunAs -ArgumentList $a -Wait
     exit
 }
@@ -51,8 +64,8 @@ if ($protected) {
         }
     }
 } else {
-    Write-Warning ("This copy is not in Program Files. The lighting service runs its code as admin from $here, which " +
-                   "programs without admin rights can change. That is fine for development; for everyday use install with Setup.")
+    Write-Warning ("-AllowUnprotected: this copy is not in Program Files. The lighting service runs its code as admin from $here, " +
+                   "which programs without admin rights can change. That is fine for development; for everyday use install with Setup.")
 }
 
 # 1. Python. A release zip carries its own (python\ next to this script) with every package installed; a source checkout uses yours.

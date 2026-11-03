@@ -37,7 +37,7 @@ To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall
 
 The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. When the driver is missing, Setup downloads its installer from the author's release page (github.com/namazso/PawnIO.Setup), checks the SHA-256, installs it silently and starts it. If that fails, or the driver is installed but Windows will not start it, Setup prints why and USB devices keep working. The release does not contain the driver.
 
-Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd`. The `.sha256` file next to it holds the checksum.
+Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd -AllowUnprotected`. The flag is needed because the lighting service runs that folder's code as admin, and outside Program Files any program running as you can change it (see Security notes below). The `.sha256` file next to it holds the checksum.
 
 Nothing is signed, so Windows SmartScreen may warn you. The checksum is downloaded from the same release as the zip, so it catches a damaged download but not a tampered release. The zip is built on one PC by `package.ps1`; `package.ps1` also builds the Setup exe from `installer/setup.cpp` and appends the zip to it (`installer/bundle.ps1`). A plain `installer/build.ps1` build has no zip inside and downloads the latest release instead.
 
@@ -46,10 +46,10 @@ Nothing is signed, so Windows SmartScreen may warn you. The checksum is download
 You need Windows 10 or 11 and Python 3.10+ (tick "Add to PATH"). In PowerShell, in this folder:
 
 ```
-powershell -ExecutionPolicy Bypass -File install.ps1    # asks for admin once
+powershell -ExecutionPolicy Bypass -File install.ps1 -AllowUnprotected    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script downloads from the author's release page (hash-checked) and installs when it is missing. USB devices work without it.
+`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-AllowUnprotected` is required outside Program Files (see Security notes below). `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script downloads from the author's release page (hash-checked) and installs when it is missing. USB devices work without it.
 
 The unit tests need only Python and `openrgb-python`. They run against a stub OpenRGB server and touch no hardware:
 
@@ -179,6 +179,6 @@ The cooler screen feature needs a DeepCool LT-series cooler with the DeepCool ap
 
 ## Security notes
 
-The lighting service runs as admin, so its code must not be changeable without admin rights. Setup puts the program in Program Files, owned by Administrators, where normal programs can only read it; the service only reads your settings folder and never writes there. Before 0.3 the program lived in `%LOCALAPPDATA%\RGB Anywhere`, which any program running as you could change, and through the service gain admin rights without a prompt: update with Setup to move it. A source checkout installed with `install.ps1` has the same weakness, and the installer warns about it.
+The lighting service runs as admin, so its code must not be changeable without admin rights. Setup puts the program in Program Files, owned by Administrators, where normal programs can only read it; the service only reads your settings folder and never writes there. Before 0.3 the program lived in `%LOCALAPPDATA%\RGB Anywhere`, which any program running as you could change, and through the service gain admin rights without a prompt: update with Setup to move it. A source checkout installed with `install.ps1` has the same weakness, so the script refuses unless you pass `-AllowUnprotected`.
 
 The phone remote is off by default. When you turn it on, it listens on your LAN with a random token in `state.json`. Anyone with the link controls your lights. The daemon listens on 127.0.0.1 only and checks a token stored in `rgbd.token`. The `rgbctl` API listens on 127.0.0.1:47824 and checks `control.token`.

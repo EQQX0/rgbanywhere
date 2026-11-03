@@ -13,6 +13,7 @@ Starts the unmodified OpenRGB (GPL-2.0-or-later) from openrgb\\ as a separate pr
 import hmac
 import json
 import os
+import re
 import secrets
 import socketserver
 import subprocess
@@ -221,6 +222,23 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+def _write_token(path, token):
+    """Create the token file readable only by SYSTEM, the administrators and this user, then put the token in it.
+    In Program Files the folder's permissions let every local account read files; the token must not be one of them."""
+    open(path, "w").close()
+    try:
+        who = subprocess.run(["whoami", "/user", "/fo", "csv", "/nh"], capture_output=True, text=True, timeout=10)
+        sid = re.search(r"S-1-[\d-]+", who.stdout or "")
+        if not sid:
+            raise RuntimeError("could not read this account's SID")
+        subprocess.run(["icacls", path, "/inheritance:r", "/grant:r", "*S-1-5-18:F", "*S-1-5-32-544:F",
+                        "*%s:R" % sid.group(0)], capture_output=True, timeout=10, check=True)
+    except Exception:
+        _log.exception("could not restrict who can read %s", path)
+    with open(path, "w", encoding="ascii") as f:
+        f.write(token)
+
+
 def reachable():
     try:
         rc.RemoteBackend(timeout=5)
@@ -244,8 +262,7 @@ def serve():
     if not rgb.is_elevated():
         _log.warning("not elevated: RAM and some boards will not be found. Run it from the 'RGB Anywhere Lighting' task.")
     _token = secrets.token_hex(24)
-    with open(rc.TOKEN_FILE, "w", encoding="ascii") as f:
-        f.write(_token)
+    _write_token(rc.TOKEN_FILE, _token)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     helper = rgb.stop_helper()
     try:

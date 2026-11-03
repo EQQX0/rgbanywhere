@@ -193,6 +193,11 @@ def default_name(src):
     return re.sub(r"^cropped-", "", base)
 
 
+class ExclusiveServer(ThreadingHTTPServer):
+    """On Windows SO_REUSEADDR (http.server's default) lets another process bind a port that is already listening."""
+    allow_reuse_address = False
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -608,7 +613,13 @@ class Api:
 
     def set_calibration(self, group, gains):
         if group in rgb.GROUPS:
-            self._app.state.setdefault("calibration", {})[group] = [max(0, min(200, int(g))) for g in gains]
+            try:
+                if isinstance(gains, str) or len(gains) != 3:
+                    raise ValueError
+                gains = [max(0, min(200, int(g))) for g in gains]
+            except (TypeError, ValueError):
+                return {"error": "Calibration needs three numbers (red, green, blue), each 0 to 200."}
+            self._app.state.setdefault("calibration", {})[group] = gains
             self._app.commit()
 
     def reset_calibration(self, group):
@@ -748,6 +759,11 @@ class Api:
         """Show hexc on every device while calibrating; None ends calibration mode."""
         if hexc and self._app.state.get("mode") == "off":  # a test colour would light the devices
             return {"error": "Turn the lights on to calibrate."}
+        if hexc:
+            try:
+                hexc = rgb.to_hex(str(hexc))
+            except ValueError as e:
+                return {"error": str(e)}
         log.info("calibration test color: %s (%s)", hexc or "ended", self._source)
         self._app.test_color = hexc or None
         self._app.test_until = time.time() + CALIBRATION_TIMEOUT
@@ -1530,7 +1546,7 @@ class App:
                     f.write(self.control_token)
             applog.add_secret(self.control_token)
             ControlHandler.app = self
-            srv = ThreadingHTTPServer(("127.0.0.1", CONTROL_PORT), ControlHandler)
+            srv = ExclusiveServer(("127.0.0.1", CONTROL_PORT), ControlHandler)
         except OSError as e:
             log.exception("can't start the control server on port %d", CONTROL_PORT)
             applog.event("control_server", ok=False, error="%s: %s" % (type(e).__name__, e))
@@ -1546,7 +1562,7 @@ class App:
             return True
         try:
             PhoneHandler.app = self
-            srv = ThreadingHTTPServer(("0.0.0.0", PHONE_PORT), PhoneHandler)
+            srv = ExclusiveServer(("0.0.0.0", PHONE_PORT), PhoneHandler)
         except OSError as e:
             log.exception("can't start the phone server on port %d", PHONE_PORT)
             applog.event("phone_server", ok=False, error="bind failed: %s" % e)

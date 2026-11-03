@@ -155,6 +155,7 @@ public class MainActivity extends Activity {
     /** The system installer reports back here: show its confirmation, or note that it didn't go through. */
     boolean handleInstallResult(Intent i) {
         if (i == null || !Updater.ACTION_RESULT.equals(i.getAction())) return false;
+        if (!Updater.isOurResult(this, i)) return true;  // sent by another app: swallow it, never launch its intent
         int status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);

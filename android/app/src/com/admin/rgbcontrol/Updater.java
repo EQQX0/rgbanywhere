@@ -27,6 +27,14 @@ final class Updater {
     static final String API = "https://api.github.com/repos/EQQX0/rgbanywhere/releases/latest";
     static final String ASSET = "RGB-Anywhere.apk";
     static final String ACTION_RESULT = "com.admin.rgbcontrol.INSTALL_RESULT";
+    // MainActivity is exported, so any app can send ACTION_RESULT. Only the result of our own session carries this secret.
+    static final String EXTRA_NONCE = "nonce";
+    private static final String PREFS = "updater";
+
+    static boolean isOurResult(Context ctx, Intent i) {
+        String expected = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(EXTRA_NONCE, null);
+        return expected != null && expected.equals(i.getStringExtra(EXTRA_NONCE));
+    }
 
     static final class Release {
         String version, url, sha256;
@@ -141,7 +149,13 @@ final class Updater {
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                 s.fsync(out);
             }
-            Intent i = new Intent(ctx, MainActivity.class).setAction(ACTION_RESULT).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            byte[] raw = new byte[16];
+            new java.security.SecureRandom().nextBytes(raw);
+            StringBuilder nonce = new StringBuilder();
+            for (byte b : raw) nonce.append(String.format("%02x", b));
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(EXTRA_NONCE, nonce.toString()).apply();
+            Intent i = new Intent(ctx, MainActivity.class).setAction(ACTION_RESULT).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(EXTRA_NONCE, nonce.toString());
             int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
             s.commit(PendingIntent.getActivity(ctx, id, i, flags).getIntentSender());
         }

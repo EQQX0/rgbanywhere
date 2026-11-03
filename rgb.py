@@ -338,14 +338,22 @@ def uptime_s():
         return -1
 
 
-def load_originals():
-    """The devices' lighting saved before RGB Anywhere first changed it (see remember_originals), or []."""
+def _read_originals():
+    """original.json as a list; [] only when the file does not exist. Raises when it can't be read or isn't a list."""
     try:
         with open(ORIGINAL, encoding="utf-8") as f:
             saved = json.load(f)
-        return saved if isinstance(saved, list) else []
     except FileNotFoundError:
         return []
+    if not isinstance(saved, list):
+        raise ValueError("original.json does not hold a list")
+    return saved
+
+
+def load_originals():
+    """The devices' lighting saved before RGB Anywhere first changed it (see remember_originals), or []."""
+    try:
+        return _read_originals()
     except Exception:
         _log.exception("original.json is unreadable; nothing to restore from it")
         return []
@@ -358,8 +366,17 @@ def remember_originals(backend):
     never saved again, so the file keeps what it had before RGB Anywhere, not what RGB Anywhere set. Returns how many
     devices were added. Never raises: failing to save must not stop the lights."""
     try:
-        saved = load_originals()
-        known = {tuple(s.get("key") or ()) for s in saved}
+        try:
+            saved = _read_originals()
+        except (ValueError, UnicodeDecodeError):  # damaged for good: keep it for inspection and start again
+            kept = "%s.corrupt.%d" % (ORIGINAL, int(time.time() * 1000))
+            os.replace(ORIGINAL, kept)
+            _log.error("original.json was damaged; kept as %s", kept)
+            saved = []
+        except OSError:  # locked or briefly unreadable: writing now would replace the real originals with our own colours
+            _log.exception("original.json could not be read; not saving originals this time")
+            return 0
+        known ={tuple(s.get("key") or ()) for s in saved}
         new = [s for s in backend.snapshot() if tuple(s["key"]) not in known]
         if not new:
             return 0

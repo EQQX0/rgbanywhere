@@ -136,5 +136,38 @@ class DaemonLogicTest(unittest.TestCase):
         self.assertEqual(self.applied, [1])
 
 
+class TokenFileTest(unittest.TestCase):
+    def test_token_file_is_limited_to_system_admins_and_the_user(self):
+        import os
+        import tempfile
+        calls = []
+
+        def run(cmd, **kw):
+            calls.append(cmd)
+            return mock.Mock(returncode=0, stdout='"DESKTOP\\\\me","S-1-5-21-1-2-3-1001"\n')
+
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "rgbd.token")
+            with mock.patch.object(rgbd.subprocess, "run", run):
+                rgbd._write_token(path, "abc123")
+            with open(path, encoding="ascii") as f:
+                self.assertEqual(f.read(), "abc123")
+        icacls = [c for c in calls if "icacls" in str(c[0]).lower()]
+        self.assertEqual(len(icacls), 1)
+        args = icacls[0]
+        self.assertIn("/inheritance:r", args)
+        for sid in ("*S-1-5-18:F", "*S-1-5-32-544:F", "*S-1-5-21-1-2-3-1001:R"):
+            self.assertIn(sid, args)
+
+    def test_a_failing_icacls_does_not_stop_the_daemon(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "rgbd.token")
+            with mock.patch.object(rgbd.subprocess, "run", side_effect=OSError("no icacls")):
+                rgbd._write_token(path, "abc123")
+            self.assertTrue(os.path.exists(path))
+
+
 if __name__ == "__main__":
     unittest.main()
