@@ -1,6 +1,7 @@
 package com.admin.rgbcontrol;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -172,25 +173,58 @@ public class MainActivity extends Activity {
     String host() { return prefs.getString("host", null); }
     String token() { return prefs.getString("token", null); }
 
-    /** rgbcontrol://pair?host=H:P&t=T  or  http://H:P/?t=T */
-    boolean pairFromUri(Uri u) {
-        if (u == null) return false;
+    /** rgbcontrol://pair?host=H:P&t=T  or  http://H:P/?t=T; {host, token}, or null if the link is not a pairing link. */
+    static String[] parsePairing(Uri u) {
+        if (u == null) return null;
         String host = null, t = u.getQueryParameter("t");
         if ("rgbcontrol".equals(u.getScheme())) host = u.getQueryParameter("host");
         else if ("http".equals(u.getScheme()) && u.getHost() != null)
             host = u.getHost() + ":" + (u.getPort() == -1 ? 80 : u.getPort());
-        if (host == null || t == null || t.isEmpty()) return false;
-        prefs.edit().putString("host", host).putString("token", t).apply();
+        if (host == null || t == null || t.isEmpty()) return null;
+        return new String[]{host, t};
+    }
+
+    /** True when saving host/token would replace a different PC (or token) that is already paired. */
+    static boolean replacesPairing(String oldHost, String oldToken, String host, String token) {
+        if (oldHost == null || oldToken == null) return false;
+        return !oldHost.equals(host) || !oldToken.equals(token);
+    }
+
+    void savePairing(String[] p) {
+        prefs.edit().putString("host", p[0]).putString("token", p[1]).apply();
+    }
+
+    /** A link the user typed or pasted into this app's own setup screen: they asked for it, so no confirmation. */
+    boolean pairFromUri(Uri u) {
+        String[] p = parsePairing(u);
+        if (p == null) return false;
+        savePairing(p);
         return true;
     }
 
+    /**
+     * A pairing link opened from outside (a QR scan, a web page, another app). Any page can link to one, so when it would
+     * replace an existing pairing the user is asked first; the first pairing needs no question.
+     */
     boolean handlePairIntent(Intent i) {
-        if (i != null && Intent.ACTION_VIEW.equals(i.getAction()) && pairFromUri(i.getData())) {
-            i.setData(null);
+        if (i == null || !Intent.ACTION_VIEW.equals(i.getAction())) return false;
+        final String[] p = parsePairing(i.getData());
+        if (p == null) return false;
+        i.setData(null);
+        if (!replacesPairing(host(), token(), p[0], p[1])) {
+            savePairing(p);
             start();
             return true;
         }
-        return false;
+        new AlertDialog.Builder(this)
+                .setTitle("Pair with a different PC?")
+                .setMessage("A link wants to connect this app to " + p[0] + " instead of " + host()
+                        + ". Only continue if you scanned the code on your own PC.")
+                .setPositiveButton("Pair", (d, w) -> { savePairing(p); start(); })
+                .setNegativeButton("Keep current", (d, w) -> start())
+                .setOnCancelListener(d -> start())
+                .show();
+        return true;
     }
 
     void start() {
