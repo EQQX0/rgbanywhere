@@ -71,6 +71,24 @@ class DaemonLogicTest(unittest.TestCase):
         core.rescan.assert_called_once()
         self.assertEqual(self.applied, [1])
 
+    def test_boot_retries_rescan_until_the_known_device_appears(self):
+        mouse = mock.Mock(); mouse.name = "Mouse"
+        client = mock.Mock(devices=[mouse])
+        with mock.patch.object(rgbd, "_client", client),                 mock.patch.object(rgb, "load_state", lambda: {"device_names": ["Keyboard", "Mouse"]}),                 mock.patch.object(rgbd, "_rescan") as rescan:
+            def found():
+                if rescan.call_count == 2:
+                    kb = mock.Mock(); kb.name = "Keyboard"
+                    client.devices.append(kb)
+            rescan.side_effect = found
+            rgbd._boot_retries((0, 0, 0))
+        self.assertEqual(rescan.call_count, 2)  # stopped once the keyboard was there
+
+    def test_boot_retries_give_up_after_the_last_pause(self):
+        client = mock.Mock(devices=[])
+        with mock.patch.object(rgbd, "_client", client),                 mock.patch.object(rgb, "load_state", lambda: {"device_names": ["Keyboard"]}),                 mock.patch.object(rgbd, "_rescan") as rescan:
+            rgbd._boot_retries((0, 0, 0))
+        self.assertEqual(rescan.call_count, 3)
+
     def test_helper_is_started_again_even_when_the_rescan_fails(self):
         started = []
         core = mock.Mock()

@@ -34,6 +34,7 @@ _start_error = None  # why OpenRGB did not start; requests report it until a res
 _ready = threading.Event()  # set once the first start finished, well or not
 _revive_failed = 0.0  # when the last RAM revive left the RAM wrong
 REVIVE_PAUSE = 180  # the app's follow-up rescans land inside this; they would only fail the same way, slowly
+BOOT_RETRY_PAUSES = (30, 60, 120)  # seconds before each rescan for a known device that start-up did not find
 
 
 def _refresh_and_apply():
@@ -131,6 +132,28 @@ def _rescan():
                 rgb.start_helper()
 
 
+def _missing_known():
+    """Devices an earlier session saw (state.json) that the daemon has not found now."""
+    if _client is None:
+        return []
+    return sorted(set(rgb.load_state().get("device_names", [])) - {d.name for d in _client.devices})
+
+
+def _boot_retries(pauses=BOOT_RETRY_PAUSES):
+    """A keyboard can enumerate after the one detection at start-up (G HUB, a receiver waking): while a known device
+    is missing, rescan after each pause, then stop. Works without the app being open."""
+    for pause in pauses:
+        time.sleep(pause)
+        try:
+            missing = _missing_known()
+            if not missing:
+                return
+            _log.info("boot: %s not found yet; rescanning", ", ".join(missing))
+            _rescan()
+        except Exception:
+            _log.exception("boot rescan failed")
+
+
 def _need_core():
     """The backend, once OpenRGB is up. While it is still detecting devices, wait (the app's request has 120 s)."""
     _ready.wait(100)
@@ -224,6 +247,7 @@ def serve():
         _ready.set()
         if helper:
             rgb.start_helper()
+    threading.Thread(target=_boot_retries, daemon=True, name="boot-retries").start()
     try:
         threading.Event().wait()  # until the task is stopped
     except KeyboardInterrupt:

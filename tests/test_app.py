@@ -379,6 +379,7 @@ def health_app(known, present, **state):
     a.client = mock.Mock(devices=[Dev(n) for n in present])
     a.health = {"state": "starting", "devices": 0, "missing": [], "note": ""}
     a.auto_fixes, a.conflicts, a.status = 0, [], ["", "ok"]
+    a.auto_fix_at, a.started_at = 0, 0  # started long ago: outside the boot window
     a.rescan_timer, a.rescan_check = None, False
     return a
 
@@ -410,6 +411,20 @@ class HealthTest(unittest.TestCase):
         self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES)
         self.assertEqual(a.check_health()["state"], "lost")
         self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES)
+
+    def test_a_keyboard_that_shows_up_late_after_boot_keeps_being_tried(self):
+        a = health_app(["Keyboard", "Mouse"], ["Mouse"])
+        a.started_at = time.time()
+        for _ in range(m.HEALTH_AUTO_FIXES):
+            a.check_health()
+        a.check_health()  # backing off: too soon after the last try
+        self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES)
+        a.auto_fix_at = time.time() - 10 * m.HEALTH_EVERY
+        a.check_health()
+        self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES + 1)
+        a.auto_fixes, a.auto_fix_at = m.BOOT_AUTO_FIXES, 0
+        self.assertEqual(a.check_health()["state"], "lost")
+        self.assertEqual(a.rescan.call_count, m.HEALTH_AUTO_FIXES + 1)
 
     def test_the_fix_it_button_starts_again(self):
         a = health_app(["Keyboard", "Mouse"], ["Mouse"])

@@ -133,6 +133,10 @@ AUTO_RECONNECT = bool(rgb.CFG.get("auto_reconnect", True))  # config.json
 CONNECT_GRACE = 60  # seconds a first connection may take before Rescan is allowed to interrupt it
 HEALTH_EVERY = 20  # seconds between looks at the device list
 HEALTH_AUTO_FIXES = 2
+# Right after start-up a keyboard may enumerate late (G HUB, a wireless receiver), after both quick tries are spent.
+# For BOOT_WINDOW seconds the app keeps trying, waiting longer each time (20, 40, 80, 160 s), up to BOOT_AUTO_FIXES.
+BOOT_WINDOW = 300
+BOOT_AUTO_FIXES = 5
 CONFLICTS_EVERY = 60  # seconds between looks at the running programs (tasklist is slow)
 CHECK_UPDATES = rgb.CFG.get("check_updates", True) is not False  # config.json: False = only the Check button asks GitHub
 UPDATE_EVERY = 6 * 3600  # seconds between checks for a new release
@@ -888,6 +892,8 @@ class App:
         self.connecting_since = 0  # when the connection in progress began; 0 = none (see connect_daemon)
         self.health = {"state": "starting", "devices": 0, "missing": [], "note": ""}  # see check_health
         self.auto_fixes = 0   # rescans the app has done by itself for the current loss
+        self.auto_fix_at = 0  # when the last one ran
+        self.started_at = time.time()
         self.conflicts = []   # other RGB programs running: [{"name", "fix"}]
         self.conflicts_at = 0
         self.rescan_lock = threading.Lock()
@@ -1271,10 +1277,19 @@ class App:
             self.auto_fixes = 0
             return self._set_health("ok", devices=len(names))
         who = ", ".join(missing)
-        if (AUTO_RECONNECT and self.auto_fixes < HEALTH_AUTO_FIXES and self.state.get("mode") != "original"
+        now = time.time()
+        booting = now - self.started_at < BOOT_WINDOW
+        if booting and self.auto_fixes >= HEALTH_AUTO_FIXES:  # the extra boot-time tries back off
+            allowed = (self.auto_fixes < BOOT_AUTO_FIXES
+                       and now - self.auto_fix_at >= HEALTH_EVERY * 2 ** (self.auto_fixes - 1))
+        else:
+            allowed = self.auto_fixes < HEALTH_AUTO_FIXES
+        if (AUTO_RECONNECT and allowed and self.state.get("mode") != "original"
                 and not icue.running()):
             self.auto_fixes += 1
-            log.warning("device health: %s missing; rescanning by itself (%d of %d)", who, self.auto_fixes, HEALTH_AUTO_FIXES)
+            self.auto_fix_at = now
+            log.warning("device health: %s missing; rescanning by itself (%d of %d)", who, self.auto_fixes,
+                        BOOT_AUTO_FIXES if booting else HEALTH_AUTO_FIXES)
             applog.event("auto_reconnect", ok=True, missing=missing, attempt=self.auto_fixes)
             self._set_health("recovering", devices=len(names), missing=missing, note="Looking for %s again" % who)
             self.rescan()
