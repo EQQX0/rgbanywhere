@@ -27,6 +27,8 @@ CONFLICTS = {
     "openrgb.exe": "OpenRGB", "icue.exe": "Corsair iCUE", "lghub.exe": "Logitech G HUB",
     "lghub_agent.exe": "Logitech G HUB", "lghub_system_tray.exe": "Logitech G HUB",
     "armourycrate.service.exe": "ASUS Armoury Crate", "armourycrate.usersessionhelper.exe": "ASUS Armoury Crate",
+    "armourysocketserver.exe": "ASUS Armoury Crate", "armourycratecontrolinterface.exe": "ASUS Armoury Crate",
+    "armouryswagent.exe": "ASUS Armoury Crate", "lghub_updater.exe": "Logitech G HUB",
     "lightingservice.exe": "ASUS Aura lighting service", "signalrgb.exe": "SignalRGB",
     "msi.centralserver.exe": "MSI Center", "rgbfusion.exe": "Gigabyte RGB Fusion",
     # Names below come from process lists and support threads, not from a test PC; a wrong one only never matches.

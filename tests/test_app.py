@@ -485,13 +485,25 @@ class HealthTest(unittest.TestCase):
         a.conflicts, a.conflicts_at = [{"name": "Logitech G HUB", "fix": "x"}], 0
         fake = mock.Mock(close_conflict=mock.Mock(return_value={"closed": ["lghub.exe"], "failed": []}),
                          _running_conflicts=lambda: [], CONFLICT_FIX={})
-        with mock.patch.dict("sys.modules", {"diag": fake}):
+        with mock.patch.dict("sys.modules", {"diag": fake}),                 mock.patch.object(m.rgb.rgbcore_client, "RemoteBackend", side_effect=OSError("no daemon")):
             res = a.close_conflict("Logitech G HUB")
             with self.assertRaises(ValueError):
                 a.close_conflict("explorer.exe")
         fake.close_conflict.assert_called_once_with("Logitech G HUB")
         self.assertEqual(res["closed"], ["lghub.exe"])
         self.assertEqual(res["health"]["conflicts"], [])
+
+    def test_close_it_goes_through_the_admin_lighting_service(self):
+        a = health_app([], [])
+        a.conflicts, a.conflicts_at = [{"name": "ASUS Armoury Crate", "fix": "x"}], 0
+        fake = mock.Mock(close_conflict=mock.Mock(), _running_conflicts=lambda: [], CONFLICT_FIX={})
+        done = {"closed": ["armourycrate.service.exe"], "failed": []}
+        with mock.patch.dict("sys.modules", {"diag": fake}),                 mock.patch.object(m.rgb.rgbcore_client, "RemoteBackend") as rb:
+            rb.return_value.request.return_value = done
+            res = a.close_conflict("ASUS Armoury Crate")
+        rb.return_value.request.assert_called_once_with("close_conflict", label="ASUS Armoury Crate")
+        fake.close_conflict.assert_not_called()
+        self.assertEqual(res["closed"], ["armourycrate.service.exe"])
 
     def test_a_phone_cannot_close_programs(self):
         self.assertNotIn("close_conflict", m.PHONE_METHODS | m.CONTROL_METHODS)

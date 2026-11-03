@@ -1309,7 +1309,11 @@ class App:
         import diag
         if name not in {c["name"] for c in self.conflicts}:
             raise ValueError("%s is not one of the programs listed as a conflict" % name)
-        res = diag.close_conflict(name)
+        try:  # the lighting service runs as admin, so it can end admin programs (Armoury Crate); the app cannot
+            res = rgb.rgbcore_client.RemoteBackend(timeout=60).request("close_conflict", label=name)
+        except Exception as e:
+            log.warning("the lighting service could not close %s (%s: %s); trying from the app", name, type(e).__name__, e)
+            res = diag.close_conflict(name)
         log.info("closed %s: %s", name, res)
         applog.event("close_conflict", ok=not res["failed"], program=name, **res)
         self.check_conflicts()
