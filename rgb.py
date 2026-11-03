@@ -15,12 +15,14 @@ Usage:
   python rgb.py --diagnose      what was found and why devices or colors may be missing (changes nothing);
                                 also saved to logs\\diagnose-<time>.txt
 """
+import itertools
 import json
 import os
 import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 
 import applog
@@ -36,16 +38,39 @@ ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before 
 GROUPS = ("ram", "fans", "keyboard", "mouse", "gpu", "audio", "other")  # what the UI can target (only those a PC has)
 
 
+def _is_int(v):
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+# config.json keys whose type the code relies on: a value of another type is dropped (and logged), not trusted
+_CONFIG_TYPES = {
+    "helper_service": lambda v: isinstance(v, str),
+    "ram_expected": _is_int,
+    "group_overrides": lambda v: isinstance(v, dict) and all(isinstance(k, str) and isinstance(g, str) for k, g in v.items()),
+    "core_log_level": lambda v: isinstance(v, str),
+    "preferred_monitor": lambda v: isinstance(v, str),
+}
+
+
 def load_config():
-    """Per-PC settings from config.json (all optional; see README). Missing file = generic defaults."""
+    """Per-PC settings from config.json (all optional; see README). Missing file = generic defaults.
+    Anything that is not a JSON object gives the defaults, and a key of the wrong type is ignored."""
     try:
         with open(CONFIG, encoding="utf-8-sig") as f:
-            return json.load(f)
+            cfg = json.load(f)
     except FileNotFoundError:
         return {}
     except Exception:
         _log.exception("config.json is unreadable; using defaults")
         return {}
+    if not isinstance(cfg, dict):
+        _log.error("config.json must hold a JSON object like { \"argb_leds\": 60 }; using defaults")
+        return {}
+    for key, ok in _CONFIG_TYPES.items():
+        if key in cfg and cfg[key] is not None and not ok(cfg[key]):
+            _log.error("config.json %s has the wrong type (%r); ignoring it", key, cfg[key])
+            del cfg[key]
+    return cfg
 
 
 CFG = load_config()
@@ -177,14 +202,20 @@ def load_state():
     return state
 
 
+_state_lock = threading.Lock()
+_state_seq = itertools.count()
+
+
 def save_state(state):
-    """Write atomically (temp file + replace) so a crash or a second process can't leave a half-written file."""
-    tmp = "%s.%d.tmp" % (STATE, os.getpid())
+    """Write atomically (temp file + replace) so a crash or a second process can't leave a half-written file.
+    The app saves from several threads, so each save has its own temp file and the replace is serialized."""
+    tmp = "%s.%d.%d.tmp" % (STATE, os.getpid(), next(_state_seq))
     try:
         os.makedirs(os.path.dirname(STATE), exist_ok=True)
         with open(tmp, "w") as f:
             json.dump(state, f)
-        os.replace(tmp, STATE)
+        with _state_lock:
+            os.replace(tmp, STATE)
     except Exception:
         _log.exception("Couldn't save state.json")
         try:

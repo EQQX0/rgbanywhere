@@ -80,15 +80,21 @@ _crash_file = None
 _TOKEN_RE = re.compile(r"(?i)((?:[?&]t=)|(?:rgbt=)|(?:phone_token\W{1,4}))[A-Za-z0-9_\-]{8,}")
 
 
+_secrets_lock = threading.Lock()
+
+
 def add_secret(value):
     if value and len(value) >= 8:
-        _secrets.add(value)
+        with _secrets_lock:
+            _secrets.add(value)
 
 
 def redact(text):
     """Mask phone sign-in tokens (and any registered secret) in a string."""
     text = _TOKEN_RE.sub(lambda m: m.group(1) + "***", str(text))
-    for s in _secrets:
+    with _secrets_lock:
+        secrets_now = tuple(_secrets)
+    for s in secrets_now:
         text = text.replace(s, "***")
     return text
 
@@ -104,8 +110,8 @@ class _Redact(logging.Filter):
                 record.exc_text = logging.Formatter().formatException(record.exc_info)
             if record.exc_text:
                 record.exc_text = redact(record.exc_text)
-        except Exception:
-            pass
+        except Exception:  # fail closed: a line that could not be checked for secrets is not written
+            record.msg, record.args, record.exc_info, record.exc_text = "[log line withheld: redaction failed]", (), None, None
         return True
 
 
