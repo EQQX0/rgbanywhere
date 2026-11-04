@@ -8,6 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>RGB Anywhere</title>
+<link rel="icon" type="image/png" href="/logo.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>
   :root {
     --page: #0b0b10;
@@ -67,8 +69,7 @@
 
   /* ---------- header ---------- */
   header { display: flex; align-items: center; gap: 14px; }
-  .logo { display: grid; grid-template-columns: repeat(2, 9px); gap: 3px; }
-  .logo i { width: 9px; height: 9px; border-radius: 3px; display: block; }
+  .logo { width: 30px; height: 30px; display: block; flex: none; }
   h1 { margin: 0; font: 600 17px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: .2px; white-space: nowrap; }
   .spacer { flex: 1; }
   .pill {
@@ -573,7 +574,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="logo" aria-hidden="true"><i style="background:#ff3c00"></i><i style="background:#a62700"></i><i style="background:#ffb000"></i><i style="background:#3b82f6"></i></div>
+    <img class="logo" src="/logo.png" alt="" width="30" height="30">
     <h1>RGB Anywhere</h1>
     <div class="spacer"></div>
     <div class="pill" role="status"><span class="dot" id="statusDot"></span><span id="statusText">Connecting…</span></div>

@@ -90,6 +90,7 @@ APP_ID = "Admin.RGBControl"  # taskbar identity; matches the Start menu shortcut
 TITLE = "RGB Anywhere"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
+UI_IMAGES = {"/logo.png": "logo.png", "/favicon.ico": "logo.png", "/apple-touch-icon.png": "apple-touch-icon.png"}
 ICON = os.path.join(HERE, "rgb.ico")
 CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's
 ACCENT_BACKUP = os.path.join(applog.DATA_DIR, "accent_backup.json")  # the user's Windows accent before we synced it
@@ -324,7 +325,7 @@ class PhoneHandler(Handler):
 
     # --- logging hooks (the base class would print to a console that doesn't exist)
     def log_request(self, code="-", size="-"):
-        if self.path.startswith(("/api/poll", "/favicon", "/api/hello", "/preview/", "/staged/", "/profiles/")):
+        if self.path.startswith(("/api/poll", "/favicon", "/logo.png", "/apple-touch-icon", "/api/hello", "/preview/", "/staged/", "/profiles/")):
             return  # polled constantly / harmless: not worth a line each
         plog.debug("%s %s %s -> %s", self.client_address[0], self.command, applog.redact(self.path), code)
 
@@ -413,10 +414,8 @@ class PhoneHandler(Handler):
                 self.end_headers()
                 with open(APK_PATH, "rb") as f:
                     shutil.copyfileobj(f, self.wfile)
-            elif u.path == "/favicon.ico":
-                self.send_response(204)
-                self.send_header("Content-Length", "0")
-                self.end_headers()
+            elif u.path in UI_IMAGES:
+                self.send_file(os.path.join(HERE, "ui", UI_IMAGES[u.path]), "image/png")
             elif u.path == "/api/poll":
                 a = self.app
                 self.send_json({"state": a.public_state(), "presets": a.presets, "profiles": a.profiles_public(),
