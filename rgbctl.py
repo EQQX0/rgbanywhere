@@ -1,15 +1,15 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-"""rgbctl: control RGB Anywhere from a terminal, a script or an AI agent.
+"""rgbctl: control EqRGB from a terminal, a script or an AI agent.
 
 Every command prints one JSON object on stdout. Exit code 0 = done, 1 = the app refused or the arguments were wrong,
-2 = the app is not running (start "RGB Anywhere" and retry).
+2 = the app is not running (start "EqRGB" and retry).
 
   rgbctl status                     current state: mode, color, per-group colors, brightness, presets, profiles, features
   rgbctl color <color> [--target T] set a color. <color> is RRGGBB, #RRGGBB or a name (red, blue, warm...).
                                     T is all (default), ram, fans, keyboard, mouse, gpu, audio or other
   rgbctl brightness <5-100>
   rgbctl on | off                   off also turns the monitors off, like the Off button
-  rgbctl original                   put every device back the way it was before RGB Anywhere (any color takes over again)
+  rgbctl original                   put every device back the way it was before EqRGB (any color takes over again)
   rgbctl exit <group> <choice>      what devices that can't be read show on original and uninstall. group: all or a
                                     group; choice: leave (hand back to the vendor app), effect (built-in) or a color
   rgbctl presets                    list saved presets
@@ -21,7 +21,7 @@ Every command prints one JSON object on stdout. Exit code 0 = done, 1 = the app 
   rgbctl describe                   machine-readable list of these commands
 
 It talks to the running app on 127.0.0.1:47824 using the token in control.token, which the app keeps in
-%LOCALAPPDATA%\\RGB Anywhere (or next to itself in a source checkout). No other dependencies.
+%LOCALAPPDATA%\\EqRGB (or next to itself in a source checkout). No other dependencies.
 """
 import argparse
 import json
@@ -43,7 +43,7 @@ COMMANDS = [
     {"name": "brightness", "args": ["percent 5-100"], "does": "Set brightness."},
     {"name": "on", "args": [], "does": "Switch the lights on (static, last color)."},
     {"name": "off", "args": [], "does": "Switch the lights off; the monitors turn off too."},
-    {"name": "original", "args": [], "does": "Restore each device's lighting from before RGB Anywhere; a color takes over again."},
+    {"name": "original", "args": [], "does": "Restore each device's lighting from before EqRGB; a color takes over again."},
     {"name": "exit", "args": ["all|ram|fans|keyboard|mouse|gpu|audio|other", "leave|effect|color"],
      "does": "Set what devices whose original lighting can't be read show on original and uninstall."},
     {"name": "presets", "args": [], "does": "List saved presets."},
@@ -74,13 +74,13 @@ def parse_color(text):
 
 def token():
     # The app writes it to the user's data folder when installed in Program Files, else next to itself (see applog)
-    local = os.path.join(os.environ.get("LOCALAPPDATA", ""), "RGB Anywhere", "control.token")
+    local = os.path.join(os.environ.get("LOCALAPPDATA", ""), "EqRGB", "control.token")
     path = os.environ.get("RGBCTL_TOKEN_FILE") or (local if os.path.isfile(local) else os.path.join(HERE, "control.token"))
     try:
         with open(path, encoding="ascii") as f:
             return f.read().strip()
     except OSError:
-        fail("no control.token at %s. Start RGB Anywhere once so it can create it." % path, 2)
+        fail("no control.token at %s. Start EqRGB once so it can create it." % path, 2)
 
 
 def request(method, path, body=None):
@@ -99,8 +99,8 @@ def request(method, path, body=None):
         fail("the app answered %s %s" % (e.code, msg))
     except (urllib.error.URLError, ConnectionError, TimeoutError) as e:
         if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):  # up, but stuck
-            fail("RGB Anywhere did not answer within %d seconds. It may be busy or hung." % TIMEOUT)
-        fail("RGB Anywhere is not running (nothing listening on 127.0.0.1:%d). Start it and retry." % port, 2)
+            fail("EqRGB did not answer within %d seconds. It may be busy or hung." % TIMEOUT)
+        fail("EqRGB is not running (nothing listening on 127.0.0.1:%d). Start it and retry." % port, 2)
 
 
 def call(name, *args):
@@ -112,7 +112,7 @@ def call(name, *args):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(prog="rgbctl", description="Control RGB Anywhere. Prints JSON.")
+    ap = argparse.ArgumentParser(prog="rgbctl", description="Control EqRGB. Prints JSON.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("color")
     c.add_argument("color")

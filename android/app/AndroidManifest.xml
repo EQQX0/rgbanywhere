@@ -9,7 +9,7 @@
 
     <!-- The app only ever talks to your own PC on your home network over plain HTTP. -->
     <application
-        android:label="RGB Anywhere"
+        android:label="EqRGB"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"

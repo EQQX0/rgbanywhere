@@ -8,7 +8,7 @@ Usage:
   python rgb.py blue            named color or hex (0000FF / #0000FF)
   python rgb.py red breathing   optional mode (static, breathing, rainbow, spectrum cycle, off, ...)
   python rgb.py ram=B32A00 fans=B32A00   per-group color (ram, fans, keyboard, mouse, gpu, audio, other); keeps the rest
-  python rgb.py original        put every device back the way it was before RGB Anywhere first changed it
+  python rgb.py original        put every device back the way it was before EqRGB first changed it
   python rgb.py brightness=60   0-100, scales every color
   python rgb.py --restore       the same as "original" once, without saving it, then restarts the vendor apps of the
                                 devices it handed back (Uninstall uses it)
@@ -34,7 +34,7 @@ _log = applog.get("lights")
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.path.join(applog.DATA_DIR, "state.json")  # written by the app (no admin), only read by the daemon
 CONFIG = os.path.join(HERE, "config.json")  # settings the elevated daemon acts on: only admins can change them
-ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before RGB Anywhere first changed it (daemon)
+ORIGINAL = os.path.join(HERE, "original.json")  # each device's lighting before EqRGB first changed it (daemon)
 GROUPS = ("ram", "fans", "keyboard", "mouse", "gpu", "audio", "other")  # what the UI can target (only those a PC has)
 
 
@@ -230,7 +230,7 @@ def color_for(state, group):
 
 
 def connect(wait=60):
-    """Connect to the lighting daemon (rgbd.py), starting it through its elevated "RGB Anywhere Lighting" task if needed.
+    """Connect to the lighting daemon (rgbd.py), starting it through its elevated "EqRGB Lighting" task if needed.
 
     The daemon is elevated because RAM and some boards are reached over SMBus; this process need not be.
     """
@@ -247,7 +247,7 @@ def wake_daemon():
     except OSError:
         pass
     r = _quiet("schtasks", "/run", "/tn", rgbcore_client.TASK_LIGHTING)
-    _log.info("lighting daemon not listening at start; schtasks /run 'RGB Anywhere Lighting' -> exit %s", r.returncode)
+    _log.info("lighting daemon not listening at start; schtasks /run 'EqRGB Lighting' -> exit %s", r.returncode)
     return r.returncode == 0
 
 
@@ -283,7 +283,7 @@ def _retry(make, wait):
             if attempt == 0:
                 _log.warning("lighting daemon not reachable (%s); starting it", last)
                 r = _quiet("schtasks", "/run", "/tn", rgbcore_client.TASK_LIGHTING)
-                _log.info("schtasks /run 'RGB Anywhere Lighting' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
+                _log.info("schtasks /run 'EqRGB Lighting' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
             time.sleep(1)
     _log.error("Could not connect to the lighting daemon within %ds (last error: %s)", wait, last)
     applog.event("core_connect", ok=False, error="could not connect within %ds" % wait, last=last)
@@ -382,7 +382,7 @@ def _read_originals():
 
 
 def load_originals():
-    """The devices' lighting saved before RGB Anywhere first changed it (see remember_originals), or []."""
+    """The devices' lighting saved before EqRGB first changed it (see remember_originals), or []."""
     try:
         return _read_originals()
     except Exception:
@@ -394,7 +394,7 @@ def remember_originals(backend):
     """Save the lighting of every device not saved yet, before anything here changes it. Call it before apply().
 
     Run on each detection, so a device plugged in later is saved too, before its first colour. A device saved once is
-    never saved again, so the file keeps what it had before RGB Anywhere, not what RGB Anywhere set. Returns how many
+    never saved again, so the file keeps what it had before EqRGB, not what EqRGB set. Returns how many
     devices were added. Never raises: failing to save must not stop the lights."""
     try:
         try:
@@ -468,7 +468,7 @@ def exit_choice(state, group):
 
 
 def restore(client, log=print, state=None):
-    """Put every saved device back the way it was before RGB Anywhere (state mode "original"), where OpenRGB could read
+    """Put every saved device back the way it was before EqRGB (state mode "original"), where OpenRGB could read
     it. A device it could not read gets its group's exit choice (see exit_choice); left as it is, its vendor app is
     named so the user can open it. Returns failures; LAST_RESTORE says what happened."""
     state = state or {}

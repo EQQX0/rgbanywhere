@@ -1,10 +1,10 @@
 """Lighting daemon: runs the bundled OpenRGB in an elevated process.
 
 Reaching RAM and some boards over SMBus needs admin, the app does not, so the app talks to this daemon over
-a localhost socket (token in rgbd.token). Run by the "RGB Anywhere Lighting" scheduled task (highest privileges).
+a localhost socket (token in rgbd.token). Run by the "EqRGB Lighting" scheduled task (highest privileges).
 
   python rgbd.py            serve (and apply the saved colours once the devices are found)
-  python rgbd.py --rescan   re-detect devices in the running daemon (the "RGB Anywhere Rescan" task); starts it if absent
+  python rgbd.py --rescan   re-detect devices in the running daemon (the "EqRGB Rescan" task); starts it if absent
 
 Copyright (C) 2026 EQQX2
 SPDX-License-Identifier: GPL-3.0-or-later
@@ -260,7 +260,7 @@ def serve():
             applog.event("daemon_port", ok=False, error="port %d taken: %s" % (rc.PORT, e))
         return
     if not rgb.is_elevated():
-        _log.warning("not elevated: RAM and some boards will not be found. Run it from the 'RGB Anywhere Lighting' task.")
+        _log.warning("not elevated: RAM and some boards will not be found. Run it from the 'EqRGB Lighting' task.")
     _token = secrets.token_hex(24)
     _write_token(rc.TOKEN_FILE, _token)
     threading.Thread(target=server.serve_forever, daemon=True).start()

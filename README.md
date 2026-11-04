@@ -1,10 +1,10 @@
-# RGB Anywhere
+# EqRGB
 
-RGB Anywhere is a Windows app that sets the color, mode and brightness of your RGB lights from one window. It groups RAM, fans and case, keyboard, mouse, graphics card, audio and other devices so you can color each group, it can put your lighting back the way it was before you installed it, and it has a tray icon, presets, a phone and Android remote, and optional control of a DeepCool cooler screen.
+EqRGB is a Windows app that sets the color, mode and brightness of your RGB lights from one window. It groups RAM, fans and case, keyboard, mouse, graphics card, audio and other devices so you can color each group, it can put your lighting back the way it was before you installed it, and it has a tray icon, presets, a phone and Android remote, and optional control of a DeepCool cooler screen.
 
 ## It bundles OpenRGB
 
-RGB Anywhere talks to your hardware through [OpenRGB](https://openrgb.org) 1.0 ([commit 81bbe18a](https://gitlab.com/CalcProgrammer1/OpenRGB/-/tree/81bbe18a84c2e507006f19dd252e397e40a56bfe)). You do not need to install it. The official Windows build sits unmodified in the `openrgb` folder. An elevated background process (`rgbd.py`) starts it without a window and controls it over the OpenRGB protocol on 127.0.0.1:47826, because RAM and some boards are reached over SMBus and that needs admin rights. The app itself runs as a normal user and talks to `rgbd.py` on localhost. A copy of OpenRGB you run yourself on its default port is left alone.
+EqRGB talks to your hardware through [OpenRGB](https://openrgb.org) 1.0 ([commit 81bbe18a](https://gitlab.com/CalcProgrammer1/OpenRGB/-/tree/81bbe18a84c2e507006f19dd252e397e40a56bfe)). You do not need to install it. The official Windows build sits unmodified in the `openrgb` folder. An elevated background process (`rgbd.py`) starts it without a window and controls it over the OpenRGB protocol on 127.0.0.1:47826, because RAM and some boards are reached over SMBus and that needs admin rights. The app itself runs as a normal user and talks to `rgbd.py` on localhost. A copy of OpenRGB you run yourself on its default port is left alone.
 
 ## License
 
@@ -27,17 +27,17 @@ OpenRGB probes many buses, including SMBus on the motherboard. Close OpenRGB and
 
 ## Download
 
-Download `RGB-Anywhere-Setup.exe` (about 87 MB) from the [latest release](https://github.com/EQQX0/rgbanywhere/releases/latest) and run it. The app is inside the file, so Setup needs no further download. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup checks the files against their SHA-256 and asks for admin once. The admin step copies them into `C:\Program Files\RGB Anywhere`, checks them again there, unpacks them and runs the installer. Your settings, the app's logs and its tokens live in `%LOCALAPPDATA%\RGB Anywhere`. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
+Download `EqRGB-Setup.exe` (about 87 MB) from the [latest release](https://github.com/EQQX0/EqRGB/releases/latest) and run it. The app is inside the file, so Setup needs no further download. The setup window offers three choices, all on by default: a desktop shortcut, start with Windows, and open the app when setup finishes. Press Install. Setup checks the files against their SHA-256 and asks for admin once. The admin step copies them into `C:\Program Files\EqRGB`, checks them again there, unpacks them and runs the installer. Your settings, the app's logs and its tokens live in `%LOCALAPPDATA%\EqRGB`. A Start menu shortcut is always created. If something fails, the window offers an "Open log" button for `install.log` in the install folder.
 
-To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. Updating from 0.2 or older moves the install from `%LOCALAPPDATA%\RGB Anywhere` to Program Files: the settings stay where they are, `config.json` and `original.json` move with the program, and the old program files are removed. (This update path has not been tried on a real PC yet.)
+To update, run Setup again. It stops the running app, the lighting daemon and OpenRGB before it replaces the files, so Windows asks for permission once. Updating from 0.2 or older moves the install from `%LOCALAPPDATA%\EqRGB` to Program Files: the settings stay where they are, `config.json` and `original.json` move with the program, and the old program files are removed. (This update path has not been tried on a real PC yet.)
 
 The app looks for a newer release on GitHub when it starts and every six hours after that. When it finds one, an **Update** button shows in the header and the tray menu gets an "Update to <version>" item. Press it and the app downloads Setup to your temp folder, checks it against the SHA-256 GitHub publishes for the file and runs it. Like the zip's checksum, that catches a damaged download but not a tampered release. Diagnostics shows your version and has a **Check for updates** button. A copy run from source has no `version.txt`, so it offers no updates: use `git pull`.
 
-To remove it, open Settings > Apps > RGB Anywhere > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts, the install folder and your settings folder. The PawnIO driver stays, because other programs may use it.
+To remove it, open Settings > Apps > EqRGB > Uninstall (or run `Uninstall.exe` in the install folder). This removes the scheduled tasks, startup entry, shortcuts, the install folder and your settings folder. The PawnIO driver stays, because other programs may use it.
 
 The app has its own Python, so nothing else needs installing. RAM and some boards need the [PawnIO](https://pawnio.eu) driver. When the driver is missing, Setup downloads its installer from the author's release page (github.com/namazso/PawnIO.Setup), checks the SHA-256, installs it silently and starts it. If that fails, or the driver is installed but Windows will not start it, Setup prints why and USB devices keep working. The release does not contain the driver.
 
-Prefer to do it by hand? Download `RGBAnywhere-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd -AllowUnprotected`. The flag is needed because the lighting service runs that folder's code as admin, and outside Program Files any program running as you can change it (see Security notes below). The `.sha256` file next to it holds the checksum.
+Prefer to do it by hand? Download `EqRGB-win64.zip` from the same page, extract it to a folder you will keep and run `Install.cmd -AllowUnprotected`. The flag is needed because the lighting service runs that folder's code as admin, and outside Program Files any program running as you can change it (see Security notes below). The `.sha256` file next to it holds the checksum.
 
 Nothing is signed, so Windows SmartScreen may warn you. The checksum is downloaded from the same release as the zip, so it catches a damaged download but not a tampered release. The zip is built on one PC by `package.ps1`; `package.ps1` also builds the Setup exe from `installer/setup.cpp` and appends the zip to it (`installer/bundle.ps1`). A plain `installer/build.ps1` build has no zip inside and downloads the latest release instead.
 
@@ -49,7 +49,7 @@ You need Windows 10 or 11 and Python 3.10+ (tick "Add to PATH"). In PowerShell, 
 powershell -ExecutionPolicy Bypass -File install.ps1 -AllowUnprotected    # asks for admin once
 ```
 
-`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "RGB Anywhere Lighting" (the elevated daemon, at logon) and "RGB Anywhere Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-AllowUnprotected` is required outside Program Files (see Security notes below). `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "RGB Anywhere" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script downloads from the author's release page (hash-checked) and installs when it is missing. USB devices work without it.
+`install.ps1` installs the Python packages, runs `fetch-openrgb.ps1` if `openrgb\OpenRGB.exe` is missing (it records the build it fetched in `openrgb\fetched-from.txt`), registers the scheduled tasks "EqRGB Lighting" (the elevated daemon, at logon) and "EqRGB Rescan", adds the startup entry, the Start menu shortcut and, if Uninstall.exe is present, the Settings > Apps entry. `-AllowUnprotected` is required outside Program Files (see Security notes below). `-Desktop` also adds a desktop shortcut and `-NoStartup` skips the startup entry. `uninstall.ps1 -Dir <folder>` removes an install (it only accepts a folder named "EqRGB" that holds the app). RAM and some boards also need the [PawnIO](https://pawnio.eu) driver, which the script downloads from the author's release page (hash-checked) and installs when it is missing. USB devices work without it.
 
 The unit tests need only Python and `openrgb-python`. They run against a stub OpenRGB server and touch no hardware:
 
@@ -57,9 +57,9 @@ The unit tests need only Python and `openrgb-python`. They run against a stub Op
 python -m unittest discover -s tests -v
 ```
 
-To build the Android app, run `powershell -File android/build.ps1 -Version 0.4.5`, using the version of the release it belongs to. It needs a JDK 21. The script downloads the Android SDK pieces it needs on the first run and writes `android/RGB-Anywhere.apk`. It signs with a key it creates at `android/rgb-control.keystore`, which is never committed. Keep a backup of that file: phones only accept an update signed with the same key.
+To build the Android app, run `powershell -File android/build.ps1 -Version 0.4.5`, using the version of the release it belongs to. It needs a JDK 21. The script downloads the Android SDK pieces it needs on the first run and writes `android/EqRGB.apk`. It signs with a key it creates at `android/rgb-control.keystore`, which is never committed. Keep a backup of that file: phones only accept an update signed with the same key.
 
-The app updates itself. On launch it checks the latest GitHub release for an `RGB-Anywhere.apk` that publishes a SHA-256 checksum. If that release is newer, an Update button appears. The app checks the download against the checksum, then hands it to Android's installer, which asks you to confirm. To ship an update, build with the new version and attach the APK to the release: `gh release upload v0.4.6 android/RGB-Anywhere.apk`.
+The app updates itself. On launch it checks the latest GitHub release for an `EqRGB.apk` that publishes a SHA-256 checksum. If that release is newer, an Update button appears. The app checks the download against the checksum, then hands it to Android's installer, which asks you to confirm. To ship an update, build with the new version and attach the APK to the release: `gh release upload v0.4.6 android/EqRGB.apk`.
 
 ## How devices are grouped
 
@@ -79,23 +79,23 @@ OpenRGB files some fan hubs, docks and mats as "accessory", "light" or "unknown"
 
 ## Your original lighting
 
-The first time RGB Anywhere finds a device, before it changes anything, it saves that device's mode, colors, brightness and speed to `original.json` in the install folder. A device you plug in later is saved the first time it is found. A device saved once is never saved again, so the file keeps what you had before RGB Anywhere.
+The first time EqRGB finds a device, before it changes anything, it saves that device's mode, colors, brightness and speed to `original.json` in the install folder. A device you plug in later is saved the first time it is found. A device saved once is never saved again, so the file keeps what you had before EqRGB.
 
 To go back, press **Original** in the app and then **Restore now**, or run `rgbctl original` (or `python rgb.py original`). Pick any color to take over again. Uninstalling restores it too, before the app is removed.
 
-Most devices can't report the colors they show. OpenRGB then reads back Direct, Static or Off with every color black, and restoring that would switch the lights off, so RGB Anywhere treats such a device as unreadable. On the PC this was tested on (Corsair DDR5, ASUS Aura board, Logitech keyboard and mouse) no device could be read. For unreadable devices, the Original window lets you choose per group what they show on Original and on uninstall:
+Most devices can't report the colors they show. OpenRGB then reads back Direct, Static or Off with every color black, and restoring that would switch the lights off, so EqRGB treats such a device as unreadable. On the PC this was tested on (Corsair DDR5, ASUS Aura board, Logitech keyboard and mouse) no device could be read. For unreadable devices, the Original window lets you choose per group what they show on Original and on uninstall:
 
 | Choice | What happens |
 |--------|--------------|
-| Leave as is (default) | RGB Anywhere hands the device back and stops changing it, then restarts (or starts) the device's own app so it sends its lighting profile again, effects included: Logitech G HUB, Corsair iCUE, Razer Synapse, SteelSeries GG and NZXT CAM. Armoury Crate, MSI Center and others it can't restart are named for you to open. A device whose app isn't installed keeps its current color. |
+| Leave as is (default) | EqRGB hands the device back and stops changing it, then restarts (or starts) the device's own app so it sends its lighting profile again, effects included: Logitech G HUB, Corsair iCUE, Razer Synapse, SteelSeries GG and NZXT CAM. Armoury Crate, MSI Center and others it can't restart are named for you to open. A device whose app isn't installed keeps its current color. |
 | Built-in effect | The device's own rainbow-like effect (Spectrum Cycle, Rainbow Wave, ...), close to how most devices look out of the box. |
 | Color | A static color you pick. |
 
-From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit fans FF6000`. Devices you used with RGB Anywhere before this feature existed were saved with RGB Anywhere's colors, because those were already on them.
+From a script: `rgbctl exit all leave`, `rgbctl exit ram effect`, `rgbctl exit fans FF6000`. Devices you used with EqRGB before this feature existed were saved with EqRGB's colors, because those were already on them.
 
 ## config.json
 
-`config.json` sits in the install folder (`C:\Program Files\RGB Anywhere` after Setup). The lighting service acts on it as admin, so only admins can change it: open Notepad as administrator to edit it. Copy `config.example.json` to `config.json` if it is missing. The file and every key are optional.
+`config.json` sits in the install folder (`C:\Program Files\EqRGB` after Setup). The lighting service acts on it as admin, so only admins can change it: open Notepad as administrator to edit it. Copy `config.example.json` to `config.json` if it is missing. The file and every key are optional.
 
 | Key | Meaning |
 |-----|---------|
@@ -137,7 +137,7 @@ rgbctl color FF3C00 --target ram   # all (default), ram, fans, keyboard, mouse, 
 rgbctl brightness 60
 rgbctl off                         # lights off, monitors off
 rgbctl on
-rgbctl original                    # back to the lighting from before RGB Anywhere
+rgbctl original                    # back to the lighting from before EqRGB
 rgbctl exit fans effect            # what unreadable devices show on original/uninstall: leave, effect or a color
 rgbctl presets / rgbctl preset 2
 rgbctl profiles / rgbctl profile <id>
@@ -146,13 +146,13 @@ rgbctl rescan
 rgbctl describe                    # the command list as JSON, for an agent to read
 ```
 
-`rgbctl.cmd` sits in the install folder (`C:\Program Files\RGB Anywhere`). Tell an agent to run `rgbctl describe` first. From a source checkout use `python rgbctl.py`.
+`rgbctl.cmd` sits in the install folder (`C:\Program Files\EqRGB`). Tell an agent to run `rgbctl describe` first. From a source checkout use `python rgbctl.py`.
 
 The app serves this on 127.0.0.1:47824 and needs the token in `control.token` next to it. Any program running as your user can read that file, so any such program can control your lights.
 
 ## Troubleshooting
 
-If devices are missing or colors don't change, run this in PowerShell from the install folder (`C:\Program Files\RGB Anywhere` after Setup). It only reads, so no light changes:
+If devices are missing or colors don't change, run this in PowerShell from the install folder (`C:\Program Files\EqRGB` after Setup). It only reads, so no light changes:
 
 ```
 .\python\python.exe rgb.py --diagnose
@@ -166,12 +166,12 @@ It lists what the lighting daemon found: whether it runs as admin, whether OpenR
 |---------|---------------|
 | Status "OpenRGB did not start" | The daemon runs but OpenRGB did not. `--diagnose` says why: OpenRGB missing (reinstall), port 47826 taken by another program, or OpenRGB exiting at start (see its log). Press Rescan to try again. |
 | "OpenRGB stopped 3 times in 5 minutes" | OpenRGB keeps crashing, so the daemon stopped restarting it. Read the newest `cache\core\logs\OpenRGB_*.log`, then press Rescan. |
-| Status "Lighting service not running" | The daemon does not answer. Run `schtasks /run /tn "RGB Anywhere Lighting"`; if it stops again, `logs\errors.log` says why (for example "port 47823 ... is taken by another program"). |
+| Status "Lighting service not running" | The daemon does not answer. Run `schtasks /run /tn "EqRGB Lighting"`; if it stops again, `logs\errors.log` says why (for example "port 47823 ... is taken by another program"). |
 | "<device> has 0 LEDs" | An addressable header with no size. Set `argb_leds` in `config.json` and press Rescan. |
 
-The app's logs live in `%LOCALAPPDATA%\RGB Anywhere\logs`, the lighting service's in `logs\` in the install folder (both in one `logs\` folder for a source checkout). Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "RGB Anywhere Rescan"`.
+The app's logs live in `%LOCALAPPDATA%\EqRGB\logs`, the lighting service's in `logs\` in the install folder (both in one `logs\` folder for a source checkout). Read `events.jsonl` and `errors.log` first. OpenRGB's own detection log is in `cache\core\logs\OpenRGB_<time>.log`; set `core_log_level` to `debug` in `config.json` for more detail. "Save debug report" in the app's Diagnostics dialog (the "Logs and diagnostics" button) includes both, plus the diagnosis. If the keyboard or mouse stop changing, press Rescan in the app or run `schtasks /run /tn "EqRGB Rescan"`.
 
-Razer devices that keep their own colors are usually being driven by Razer Synapse. In Synapse, set each Razer device's lighting to Static, color black, or quit Synapse and turn it off under Task Manager > Startup apps. `--diagnose` names the RGB programs it finds running (Razer Synapse, iCUE, G HUB, Armoury Crate, SignalRGB, SteelSeries GG, NZXT CAM, L-Connect and others) and lists devices that only have effect modes, which RGB Anywhere leaves alone.
+Razer devices that keep their own colors are usually being driven by Razer Synapse. In Synapse, set each Razer device's lighting to Static, color black, or quit Synapse and turn it off under Task Manager > Startup apps. `--diagnose` names the RGB programs it finds running (Razer Synapse, iCUE, G HUB, Armoury Crate, SignalRGB, SteelSeries GG, NZXT CAM, L-Connect and others) and lists devices that only have effect modes, which EqRGB leaves alone.
 
 Close iCUE and OpenRGB before using this app. Two programs talking to the RAM at once can push Corsair sticks into bootloader mode, where they ignore colors until iCUE's service resets them.
 
@@ -179,6 +179,6 @@ The cooler screen feature needs a DeepCool LT-series cooler with the DeepCool ap
 
 ## Security notes
 
-The lighting service runs as admin, so its code must not be changeable without admin rights. Setup puts the program in Program Files, owned by Administrators, where normal programs can only read it; the service only reads your settings folder and never writes there. Before 0.3 the program lived in `%LOCALAPPDATA%\RGB Anywhere`, which any program running as you could change, and through the service gain admin rights without a prompt: update with Setup to move it. A source checkout installed with `install.ps1` has the same weakness, so the script refuses unless you pass `-AllowUnprotected`.
+The lighting service runs as admin, so its code must not be changeable without admin rights. Setup puts the program in Program Files, owned by Administrators, where normal programs can only read it; the service only reads your settings folder and never writes there. Before 0.3 the program lived in `%LOCALAPPDATA%\EqRGB`, which any program running as you could change, and through the service gain admin rights without a prompt: update with Setup to move it. A source checkout installed with `install.ps1` has the same weakness, so the script refuses unless you pass `-AllowUnprotected`.
 
 The phone remote is off by default. When you turn it on, it listens on your LAN with a random token in `state.json`. Anyone with the link controls your lights. The daemon listens on 127.0.0.1 only and checks a token stored in `rgbd.token`. The `rgbctl` API listens on 127.0.0.1:47824 and checks `control.token`.

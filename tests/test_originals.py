@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-"""original.json holds the lighting from before RGB Anywhere. A failed read must never lead to it being overwritten."""
+"""original.json holds the lighting from before EqRGB. A failed read must never lead to it being overwritten."""
 import builtins
 import json
 import os

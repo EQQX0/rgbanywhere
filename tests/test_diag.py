@@ -162,7 +162,7 @@ class LocalTest(Base):
         t = diag.text(d)
         self.assertIn("Lighting daemon: NOT REACHABLE (ConnectionError: refused)", t)
         self.assertIn("Devices: unknown", t)
-        self.assertIn("schtasks /run /tn \"RGB Anywhere Lighting\"", d["hints"][0])
+        self.assertIn("schtasks /run /tn \"EqRGB Lighting\"", d["hints"][0])
         self.assertIn("PawnIO driver is not installed", " ".join(d["hints"]))
         self.assertFalse(any("admin" in h for h in d["hints"]))  # unknown from here, so not claimed
 

@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-"""Logging and diagnostics for RGB Anywhere. The app writes to logs\\ in the user's data folder, the elevated lighting
+"""Logging and diagnostics for EqRGB. The app writes to logs\\ in the user's data folder, the elevated lighting
 daemon to logs\\ in the install folder (the same folder for a source checkout):
 
   rgb.log          everything (debug and up), rotating, 3 MB x 5
@@ -51,7 +51,7 @@ def folders(here, env, is_admin):
     code. RGB_DATA_DIR and RGB_LOG_DIR override (the tests use them)."""
     protected = _under(here, [env.get(v) for v in ("ProgramFiles", "ProgramW6432", "ProgramFiles(x86)")])
     data = env.get("RGB_DATA_DIR") or (
-        os.path.join(env["LOCALAPPDATA"], "RGB Anywhere") if protected and env.get("LOCALAPPDATA") else here)
+        os.path.join(env["LOCALAPPDATA"], "EqRGB") if protected and env.get("LOCALAPPDATA") else here)
     service_logs = os.path.join(here, "logs")  # the elevated daemon's: never in a folder a normal process controls
     user_logs = os.path.join(data, "logs")
     logs = env.get("RGB_LOG_DIR") or (service_logs if is_admin or not protected else user_logs)
@@ -171,7 +171,7 @@ def setup(role="app"):
               where="thread " + (args.thread.name if args.thread else "?"))
     threading.excepthook = thread_hook
 
-    log.info("=== RGB Anywhere %s started: pid=%d session=%s python=%s %s", role, os.getpid(), SESSION,
+    log.info("=== EqRGB %s started: pid=%d session=%s python=%s %s", role, os.getpid(), SESSION,
              platform.python_version(), platform.platform())
     log.info("argv=%s", sys.argv)
 
@@ -334,7 +334,7 @@ def build_report(diagnosis=None):
             z.writestr("settings.json", json.dumps(state, indent=2, ensure_ascii=False))
         except Exception as e:
             z.writestr("settings.json", "unreadable: %s" % e)
-        info = ["RGB Anywhere debug report", "made: " + datetime.datetime.now().isoformat(timespec="seconds"),
+        info = ["EqRGB debug report", "made: " + datetime.datetime.now().isoformat(timespec="seconds"),
                 "session: " + SESSION, "os: " + platform.platform(), "machine: " + platform.machine(),
                 "python: " + sys.version, ""] + _versions()
         try:

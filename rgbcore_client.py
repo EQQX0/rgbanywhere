@@ -26,8 +26,8 @@ import applog
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 47823
 SDK_PORT = 47826  # private port for our own OpenRGB process, so a copy you run yourself (6742) is left alone
-TASK_LIGHTING = "RGB Anywhere Lighting"  # elevated scheduled tasks (own names, so they never replace another install's tasks)
-TASK_RESCAN = "RGB Anywhere Rescan"
+TASK_LIGHTING = "EqRGB Lighting"  # elevated scheduled tasks (own names, so they never replace another install's tasks)
+TASK_RESCAN = "EqRGB Rescan"
 TOKEN_FILE = os.path.join(HERE, "rgbd.token")
 _log = applog.get("core")
 
@@ -358,7 +358,7 @@ class SdkBackend:
     def _start(self):
         if self.spawn:
             if not os.path.exists(self.exe):
-                raise FileNotFoundError("OpenRGB is missing: %s. Reinstall RGB Anywhere." % self.exe)
+                raise FileNotFoundError("OpenRGB is missing: %s. Reinstall EqRGB." % self.exe)
             self._free_port()
             self._proc = subprocess.Popen(
                 [self.exe, "--server", "--server-host", "127.0.0.1", "--server-port", str(self.port),
@@ -406,7 +406,7 @@ class SdkBackend:
                 raise RuntimeError("OpenRGB exited with code %s while starting. Its log is in %s"
                                    % (self._proc.returncode, self.log_dir))
             try:
-                cli = OpenRGBClient("127.0.0.1", self.port, "RGB Anywhere", protocol_version=PROTOCOL)
+                cli = OpenRGBClient("127.0.0.1", self.port, "EqRGB", protocol_version=PROTOCOL)
                 if cli.protocol_version == PROTOCOL:
                     # openrgb-python sends each request's header and body separately; without this every request
                     # waits for the server's delayed ACK (40 ms on Linux; Windows may delay ACKs up to 200 ms)

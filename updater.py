@@ -13,12 +13,12 @@ import urllib.request
 
 import applog
 
-REPO = "EQQX0/rgbanywhere"
+REPO = "EQQX0/EqRGB"
 API = "https://api.github.com/repos/%s/releases/latest" % REPO
 PAGES = "https://github.com/%s/releases/" % REPO  # the only pages "What's new" opens
-SETUP = "RGB-Anywhere-Setup.exe"
+SETUP = "EqRGB-Setup.exe"
 HERE = os.path.dirname(os.path.abspath(__file__))
-PREFIX = "rgbanywhere-update-"  # the %TEMP% folders a download goes to
+PREFIX = "eqrgb-update-"  # the %TEMP% folders a download goes to
 log = applog.get("update")
 
 
@@ -38,7 +38,7 @@ def key(v):
 
 def latest(timeout=15):
     """The newest release: its version and page, and Setup's URL, size and SHA-256 as GitHub publishes them."""
-    req = urllib.request.Request(API, headers={"Accept": "application/vnd.github+json", "User-Agent": "RGBAnywhere"})
+    req = urllib.request.Request(API, headers={"Accept": "application/vnd.github+json", "User-Agent": "EqRGB"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         rel = json.load(r)
     asset = next((a for a in rel.get("assets", []) if a.get("name") == SETUP), {})
@@ -75,7 +75,7 @@ def download(rel, progress=None, timeout=30):
     cleanup()
     path = os.path.join(tempfile.mkdtemp(prefix=PREFIX), SETUP)
     h, done, shown = hashlib.sha256(), 0, -1
-    req = urllib.request.Request(rel["url"], headers={"User-Agent": "RGBAnywhere"})
+    req = urllib.request.Request(rel["url"], headers={"User-Agent": "EqRGB"})
     with urllib.request.urlopen(req, timeout=timeout) as r, open(path, "wb") as f:
         total = int(r.headers.get("Content-Length") or rel.get("size") or 0)
         while True:

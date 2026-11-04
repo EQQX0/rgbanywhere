@@ -1,4 +1,4 @@
-﻿# Builds RGB-Anywhere.apk (no Gradle: aapt2 + javac + d8 + apksigner). Usage: powershell -File build.ps1 -Version 0.4.5
+﻿# Builds EqRGB.apk (no Gradle: aapt2 + javac + d8 + apksigner). Usage: powershell -File build.ps1 -Version 0.4.5
 # The version should match the release tag the APK is attached to: the app updates itself by comparing the two.
 param([Parameter(Mandatory)][string]$Version)
 $ErrorActionPreference = "Stop"
@@ -36,7 +36,7 @@ New-Item -ItemType Directory -Force "$b\classes", "$b\dex" | Out-Null
 # one-time signing key (kept so future builds can update an installed app)
 if (-not (Test-Path $ks)) {
     & "$jbin\keytool.exe" -genkeypair -keystore $ks -storepass $kspass -keypass $kspass -alias rgb `
-        -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=RGB Anywhere" | Out-Null
+        -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=EqRGB" | Out-Null
 }
 
 & "$bt\aapt2.exe" compile --dir "$root\app\res" -o "$b\res.zip"
@@ -62,7 +62,7 @@ if ($LASTEXITCODE) { throw "d8 failed" }
 python -I -c "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'a'); z.write(sys.argv[2],'classes.dex'); z.close()" "$b\unsigned.apk" "$b\dex\classes.dex"
 & "$bt\zipalign.exe" -p -f 4 "$b\unsigned.apk" "$b\aligned.apk"
 if ($LASTEXITCODE) { throw "zipalign failed" }
-$out = "$root\RGB-Anywhere.apk"
+$out = "$root\EqRGB.apk"
 & "$bt\apksigner.bat" sign --ks $ks --ks-pass pass:$kspass --key-pass pass:$kspass --out $out "$b\aligned.apk"
 if ($LASTEXITCODE) { throw "apksigner failed" }
 & "$bt\apksigner.bat" verify --verbose $out | Select-Object -First 4

@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'build.ps1')
 if ($LASTEXITCODE) { throw 'build.ps1 failed' }
-$stub = Join-Path $here 'RGB-Anywhere-Setup.exe'
+$stub = Join-Path $here 'EqRGB-Setup.exe'
 $sha = (Get-FileHash $Zip -Algorithm SHA256).Hash.ToLower()
 $size = (Get-Item $Zip).Length
 $fs = [IO.File]::Create($Out)

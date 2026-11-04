@@ -1,8 +1,8 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
 """Hand devices back to their vendor app: restart G HUB, iCUE, Synapse... so it sends its own lighting profile again.
 
-Used when RGB Anywhere lets go of devices whose original lighting it could not read (Original, and on uninstall).
-The vendor app keeps the user's real profile, effects included, which RGB Anywhere cannot copy. Apps it cannot restart
+Used when EqRGB lets go of devices whose original lighting it could not read (Original, and on uninstall).
+The vendor app keeps the user's real profile, effects included, which EqRGB cannot copy. Apps it cannot restart
 from here (Armoury Crate and MSI Center are Store apps with services) are only named, for the user to open.
 """
 import ntpath  # Windows paths, also when the tests run elsewhere

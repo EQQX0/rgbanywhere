@@ -102,10 +102,10 @@ class FoldersTest(unittest.TestCase):
 
     def test_installed_in_program_files(self):
         j = self.j
-        here = j("/pf", "RGB Anywhere")
+        here = j("/pf", "EqRGB")
         app = applog.folders(here, self.ENV, is_admin=False)
         self.assertTrue(app["protected"])
-        data = j("/home/u/local", "RGB Anywhere")
+        data = j("/home/u/local", "EqRGB")
         self.assertEqual(app["data"], data)  # settings: the user's own folder
         self.assertEqual(app["logs"], j(data, "logs"))
         daemon = applog.folders(here, self.ENV, is_admin=True)
@@ -121,10 +121,10 @@ class FoldersTest(unittest.TestCase):
         self.assertEqual(applog.folders(here, self.ENV, is_admin=False)["logs"], self.j(here, "logs"))
 
     def test_a_folder_that_only_starts_like_program_files_is_not_protected(self):
-        self.assertFalse(applog.folders(self.j("/pf-evil", "RGB Anywhere"), self.ENV, is_admin=True)["protected"])
+        self.assertFalse(applog.folders(self.j("/pf-evil", "EqRGB"), self.ENV, is_admin=True)["protected"])
 
     def test_overrides(self):
-        f = applog.folders(self.j("/pf", "RGB Anywhere"), dict(self.ENV, RGB_DATA_DIR="/d", RGB_LOG_DIR="/l"), is_admin=True)
+        f = applog.folders(self.j("/pf", "EqRGB"), dict(self.ENV, RGB_DATA_DIR="/d", RGB_LOG_DIR="/l"), is_admin=True)
         self.assertEqual((f["data"], f["logs"], f["events"]), ("/d", "/l", [self.j("/l", "events.jsonl")]))
 
 

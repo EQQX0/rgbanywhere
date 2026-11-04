@@ -24,8 +24,8 @@ import java.security.MessageDigest;
  * Android always asks the user to confirm the install itself.
  */
 final class Updater {
-    static final String API = "https://api.github.com/repos/EQQX0/rgbanywhere/releases/latest";
-    static final String ASSET = "RGB-Anywhere.apk";
+    static final String API = "https://api.github.com/repos/EQQX0/EqRGB/releases/latest";
+    static final String ASSET = "EqRGB.apk";
     static final String ACTION_RESULT = "com.admin.rgbcontrol.INSTALL_RESULT";
     // MainActivity is exported, so any app can send ACTION_RESULT. Only the result of our own session carries this secret.
     static final String EXTRA_NONCE = "nonce";
@@ -71,7 +71,7 @@ final class Updater {
             c.setConnectTimeout(8000);
             c.setReadTimeout(15000);
             c.setRequestProperty("Accept", "application/vnd.github+json");
-            c.setRequestProperty("User-Agent", "RGBAnywhere");
+            c.setRequestProperty("User-Agent", "EqRGB");
             if (c.getResponseCode() != 200) return null;
             JSONObject rel = new JSONObject(readAll(c.getInputStream()));
             JSONArray assets = rel.optJSONArray("assets");
@@ -113,7 +113,7 @@ final class Updater {
         HttpURLConnection c = (HttpURLConnection) new URL(rel.url).openConnection();  // GitHub redirects to its CDN
         c.setConnectTimeout(10000);
         c.setReadTimeout(30000);
-        c.setRequestProperty("User-Agent", "RGBAnywhere");
+        c.setRequestProperty("User-Agent", "EqRGB");
         try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(f)) {
             long total = c.getContentLength() > 0 ? c.getContentLength() : rel.size, done = 0;
             int shown = -1, n;

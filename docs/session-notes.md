@@ -26,13 +26,13 @@ When something fails on the PC, `docs/lighting-path.md` says which log line each
 Commands for the Windows PC, read-only first (in the checkout, branch openrgb-bundle):
 1. `python -m pip install openrgb-python==0.3.8` then `python -m unittest discover -s tests -v`
 2. `powershell -ExecutionPolicy Bypass -File fetch-openrgb.ps1` then `type openrgb\fetched-from.txt` and `dir openrgb\PawnIOLib.dll openrgb\*.bin`
-3. `sc query PawnIO` and `schtasks /query /tn "RGB Anywhere Lighting" /v /fo list`
+3. `sc query PawnIO` and `schtasks /query /tn "EqRGB Lighting" /v /fo list`
 4. `netstat -ano | findstr :47826` (should be empty before the daemon starts)
 These change lights or processes:
 5. `python rgb.py --diagnose` (starts the daemon if needed, which applies the saved colours)
 6. `python rgbctl.py color red`, then `python rgbctl.py color 0000FF --target fans`, then `python rgbctl.py monitors-off`
-7. `schtasks /run /tn "RGB Anywhere Rescan"`, then `python rgb.py --diagnose` again; read `logs\rgb.log` and `cache\core\logs\OpenRGB_*.log`
-8. End the "RGB Anywhere Lighting" task in Task Manager and check that OpenRGB.exe ends with it (job object)
+7. `schtasks /run /tn "EqRGB Rescan"`, then `python rgb.py --diagnose` again; read `logs\rgb.log` and `cache\core\logs\OpenRGB_*.log`
+8. End the "EqRGB Lighting" task in Task Manager and check that OpenRGB.exe ends with it (job object)
 9. Build the Setup exe (`installer\build.ps1`) and a zip (`package.ps1`), install, then run Setup again over it (update path)
 
 ## Needs the owner
