@@ -68,9 +68,22 @@
   .app { position: relative; z-index: 1; display: flex; flex-direction: column; width: 100%; max-width: 1180px; margin: auto; padding: 18px 22px 22px; gap: 16px; }
 
   /* ---------- header ---------- */
-  header { display: flex; align-items: center; gap: 14px; }
-  .logo { width: 42px; height: 42px; display: block; flex: none; }
-  h1 { margin: 0; font: 600 17px/1 "Segoe UI Variable Display", "Segoe UI", sans-serif; letter-spacing: .2px; white-space: nowrap; }
+  header { display: flex; align-items: center; gap: 16px; position: relative; padding-bottom: 14px; }
+  /* A thin spectrum line under the header: the logo's ring, unrolled */
+  header::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; border-radius: 2px; opacity: .55;
+    background: linear-gradient(90deg, #ff2d55, #ff9500, #ffee00, #30ff3c, #22e5ff, #3a3aff, #c026ff, #ff2d90);
+  }
+  .logo { width: 92px; height: 92px; display: block; flex: none; border-radius: 50%;
+          filter: drop-shadow(0 0 14px rgba(232, 184, 90, .35)) drop-shadow(0 0 28px rgba(160, 90, 255, .22)); }
+  h1 { margin: 0; font: italic 800 44px/1 "Playfair Display", "Iowan Old Style", "Palatino Linotype", Georgia, serif; letter-spacing: .5px; white-space: nowrap;
+       background: linear-gradient(135deg, #fff3c9, #d9962a); -webkit-background-clip: text; background-clip: text; color: transparent;
+       filter: drop-shadow(0 0 10px rgba(232, 184, 90, .25)); }
+  /* The logo as the page's watermark, big and faint behind everything */
+  body::before {
+    content: ""; position: fixed; z-index: 0; right: -6vmin; bottom: -6vmin; width: 78vmin; height: 78vmin; pointer-events: none;
+    background: url(/logo.png) center / contain no-repeat; opacity: .18;
+  }
   .spacer { flex: 1; }
   .pill {
     display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px;
@@ -539,6 +552,8 @@
   @media (max-width: 640px) {
     .remote .app { padding-top: max(14px, env(safe-area-inset-top)); }
     .remote header { gap: 10px; }
+  .logo { width: 64px; height: 64px; }
+  h1 { font-size: 32px; }
     .remote header .pill { order: 1; }
     .remote header #power { order: 2; }
     .remote header #accentSw { order: 3; }
