@@ -93,16 +93,20 @@
     .card, .banner, .health, .dialog { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); }
   }
   .support { display: flex; justify-content: center; }
+  /* On a phone the button would touch the screen edge or the gesture bar: leave room below it */
+  @media (max-width: 640px) { .support { padding: 8px 0 max(32px, calc(env(safe-area-inset-bottom) + 24px)); } }
+  .remote .support { padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 24px)); }
+  /* Buy Me a Coffee's own button look (yellow, black outline, script font), drawn here instead of loading their script into a page that controls your lights */
   .coffee {
-    display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 16px; border-radius: 999px;
-    border: 1px solid rgba(232, 184, 90, .45); color: #f3d58a; font-size: 13px; font-weight: 600;
-    background: linear-gradient(145deg, rgba(232,184,90,.16), rgba(232,184,90,.05));
-    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
-    box-shadow: var(--glass-edge); transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur-press) var(--ease);
+    display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 22px; border-radius: 10px;
+    border: 2px solid #000; background: #FFDD00; color: #000;
+    font: 400 22px/1 Cookie, "Segoe Script", "Brush Script MT", "Lucida Handwriting", cursive; letter-spacing: .3px;
+    box-shadow: 0 3px 0 rgba(0,0,0,.55), 0 10px 24px -10px rgba(255,221,0,.55);
+    transition: transform var(--dur-press) var(--ease), box-shadow var(--dur) var(--ease), filter var(--dur) var(--ease);
   }
-  .coffee:hover { background: linear-gradient(145deg, rgba(232,184,90,.28), rgba(232,184,90,.1)); border-color: rgba(232,184,90,.7); }
-  .coffee:active { transform: scale(.97); }
-  @media (max-width: 640px) { .coffee { height: 44px; } }   /* a finger needs 44 px */
+  .coffee svg { width: 20px; height: 20px; flex: none; }
+  .coffee:hover { filter: brightness(1.06); transform: translateY(-1px); }
+  .coffee:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.55); }
   /* The logo as the page's watermark, big and faint behind everything */
   body::before {
     content: ""; position: fixed; z-index: 0; right: -6vmin; bottom: -6vmin; width: 78vmin; height: 78vmin; pointer-events: none;
@@ -752,7 +756,7 @@
   <footer class="support">
     <button class="coffee" id="coffee" title="Support EqRGB: buymeacoffee.com/EQQX2">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/></svg>
-      Enjoying EqRGB? Buy me a coffee
+      Buy me a coffee
     </button>
   </footer>
 </div>
