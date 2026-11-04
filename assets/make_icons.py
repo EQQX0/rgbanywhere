@@ -1,7 +1,7 @@
-"""Build every app icon from assets/logo-1024.png (the rasterised assets/logo.svg).
+"""Build every app icon from assets/logo-2048.png (the rasterised assets/logo.svg).
 
 Re-render the PNG after changing the SVG:
-  chrome --headless=new --default-background-color=00000000 --window-size=1024,1024 --screenshot=assets/logo-1024.png <page showing logo.svg at 1024px>
+  chrome --headless=new --default-background-color=00000000 --window-size=2048,2048 --screenshot=assets/logo-2048.png <page showing logo.svg at 2048px>
 Then run:  python assets/make_icons.py
 """
 import os
@@ -10,7 +10,8 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SRC = Image.open(os.path.join(HERE, "logo-1024.png")).convert("RGBA")
+SRC = Image.open(os.path.join(HERE, "logo-2048.png")).convert("RGBA")  # logo.svg rendered at 2048 px
+K = SRC.width / 1024  # the coordinates below are for a 1024 px logo
 
 
 def sized(px):
@@ -22,11 +23,11 @@ def bold():
     from PIL import ImageDraw
     im = SRC.copy()
     d = ImageDraw.Draw(im)
-    d.ellipse([88, 88, 936, 936], fill=(16, 12, 8, 255))
-    glyph = SRC.crop((265, 245, 750, 600))
-    w = 700
+    d.ellipse([88 * K, 88 * K, 936 * K, 936 * K], fill=(16, 12, 8, 255))
+    glyph = SRC.crop((int(265 * K), int(245 * K), int(750 * K), int(600 * K)))
+    w = int(700 * K)
     glyph = glyph.resize((w, int(glyph.height * w / glyph.width)), Image.LANCZOS)
-    im.alpha_composite(glyph, ((1024 - w) // 2, (1024 - glyph.height) // 2 - 10))
+    im.alpha_composite(glyph, ((SRC.width - w) // 2, (SRC.height - glyph.height) // 2 - int(10 * K)))
     return im
 
 
@@ -59,6 +60,6 @@ for name, px in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 
     sized(px).save(os.path.join(out, "ic_launcher.png"))
 
 # Web UI header logo and favicon / home-screen icon
-sized(160).save(os.path.join(ROOT, "ui", "logo.png"), optimize=True)
-sized(180).save(os.path.join(ROOT, "ui", "apple-touch-icon.png"), optimize=True)
+sized(512).save(os.path.join(ROOT, "ui", "logo.png"), optimize=True)  # crisp on high-DPI screens
+sized(512).save(os.path.join(ROOT, "ui", "apple-touch-icon.png"), optimize=True)
 print("icons ok")
