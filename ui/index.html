@@ -93,6 +93,9 @@
     .card, .banner, .health, .dialog { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); }
   }
   .support { display: flex; justify-content: center; }
+  /* On a phone the button would touch the screen edge or the gesture bar: leave room below it */
+  @media (max-width: 640px) { .support { padding: 8px 0 max(32px, calc(env(safe-area-inset-bottom) + 24px)); } }
+  .remote .support { padding-bottom: max(32px, calc(env(safe-area-inset-bottom) + 24px)); }
   /* Buy Me a Coffee's own button look (yellow, black outline, script font), drawn here instead of loading their script into a page that controls your lights */
   .coffee {
     display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 22px; border-radius: 10px;
