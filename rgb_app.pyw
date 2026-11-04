@@ -99,6 +99,7 @@ def tray_image():
         return ico
 
 
+SUPPORT_URL = "https://buymeacoffee.com/EQQX2"
 UI_IMAGES = {"/logo.png": "logo.png", "/favicon.ico": "logo.png", "/apple-touch-icon.png": "apple-touch-icon.png"}
 ICON = os.path.join(HERE, "rgb.ico")
 CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's
@@ -703,6 +704,9 @@ class Api:
         if not page.startswith(updater.PAGES):  # only ever a GitHub release page of this project
             page = updater.PAGES + "latest"
         os.startfile(page)
+
+    def open_support(self):
+        os.startfile(SUPPORT_URL)  # a fixed address, never one the page sends
 
     # ----- phone access (desktop window only) -----
     def phone_info(self):

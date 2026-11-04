@@ -92,6 +92,17 @@
   @media (prefers-reduced-transparency: reduce) {
     .card, .banner, .health, .dialog { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); }
   }
+  .support { display: flex; justify-content: center; }
+  .coffee {
+    display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 16px; border-radius: 999px;
+    border: 1px solid rgba(232, 184, 90, .45); color: #f3d58a; font-size: 13px; font-weight: 600;
+    background: linear-gradient(145deg, rgba(232,184,90,.16), rgba(232,184,90,.05));
+    -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-edge); transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur-press) var(--ease);
+  }
+  .coffee:hover { background: linear-gradient(145deg, rgba(232,184,90,.28), rgba(232,184,90,.1)); border-color: rgba(232,184,90,.7); }
+  .coffee:active { transform: scale(.97); }
+  @media (max-width: 640px) { .coffee { height: 44px; } }   /* a finger needs 44 px */
   /* The logo as the page's watermark, big and faint behind everything */
   body::before {
     content: ""; position: fixed; z-index: 0; right: -6vmin; bottom: -6vmin; width: 78vmin; height: 78vmin; pointer-events: none;
@@ -738,6 +749,12 @@
       <div class="hint">Or drag an image, GIF or video onto the screen above.</div>
     </section>
   </main>
+  <footer class="support">
+    <button class="coffee" id="coffee" title="Support EqRGB: buymeacoffee.com/EQQX2">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/></svg>
+      Enjoying EqRGB? Buy me a coffee
+    </button>
+  </footer>
 </div>
 
 <div class="scrim" id="cal" role="dialog" aria-modal="true" aria-labelledby="calTitle">
@@ -1629,6 +1646,7 @@ $("updateBtn").onclick = openUpd;
 $("updCancel").onclick = closeUpd;
 $("upd").addEventListener("keydown", e => { if (e.key === "Escape") closeUpd(); });
 $("updNotes").onclick = () => api.open_release_notes();
+$("coffee").onclick = () => { if (REMOTE) window.open("https://buymeacoffee.com/EQQX2", "_blank", "noopener"); else api.open_support(); };
 $("updGo").onclick = async () => {
   $("updGo").disabled = true; updBusy = true;
   $("updMsg").textContent = "Starting the download…";
