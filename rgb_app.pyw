@@ -90,6 +90,15 @@ APP_ID = "Admin.RGBControl"  # taskbar identity; matches the Start menu shortcut
 TITLE = "EqRGB"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
+def tray_image():
+    """The tray icon from the .ico's 64 px frame (opening the file as is would shrink the 256 px one, which is mushy)."""
+    ico = Image.open(ICON)
+    try:
+        return ico.ico.getimage((64, 64)).convert("RGBA")
+    except Exception:
+        return ico
+
+
 UI_IMAGES = {"/logo.png": "logo.png", "/favicon.ico": "logo.png", "/apple-touch-icon.png": "apple-touch-icon.png"}
 ICON = os.path.join(HERE, "rgb.ico")
 CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's
@@ -1933,7 +1942,7 @@ class App:
             yield pystray.MenuItem("Quit", lambda i, it: self.quit())
 
         menu = pystray.Menu(items)
-        self.tray = pystray.Icon(TITLE, Image.open(ICON), TITLE, menu)
+        self.tray = pystray.Icon(TITLE, tray_image(), TITLE, menu)
         self.tray.run_detached()
 
 
