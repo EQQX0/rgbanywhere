@@ -20,7 +20,7 @@
     --border: rgba(255, 255, 255, 0.10);
     --border-strong: rgba(255, 255, 255, 0.18);
     --glass-blur: blur(22px) saturate(1.6);  /* frosted panels: they blur what is behind them */
-    --glass-bg: linear-gradient(145deg, rgba(255,255,255,.085), rgba(255,255,255,.035));
+    --glass-bg: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
     --glass-edge: inset 0 1px 0 rgba(255,255,255,.16), inset 0 0 0 1px rgba(255,255,255,.07);
     --glass-shadow: 0 18px 40px -22px rgba(0,0,0,.8);
     --float-shadow: 0 24px 60px -24px rgba(0,0,0,.75);   /* only for what floats: dialogs, toasts */
@@ -95,7 +95,7 @@
   /* The logo as the page's watermark, big and faint behind everything */
   body::before {
     content: ""; position: fixed; z-index: 0; right: -6vmin; bottom: -6vmin; width: 78vmin; height: 78vmin; pointer-events: none;
-    background: url(/logo.png) center / contain no-repeat; opacity: .18;
+    background: url(/logo.png) center / contain no-repeat; opacity: .3;
   }
   .spacer { flex: 1; }
   .pill {
@@ -119,7 +119,7 @@
   /* ---------- layout ---------- */
   main { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
   @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
-  .card { background: var(--glass-bg), rgba(22,22,30,.55); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge), var(--glass-shadow); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .card { background: var(--glass-bg), rgba(22,22,30,.22); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge), var(--glass-shadow); border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-height: 0; }
   .card-head { display: flex; align-items: center; gap: 10px; }
   .card-head h2 { margin: 0; font-size: 16px; font-weight: 600; color: var(--text); white-space: nowrap; }
   .label { font-size: 13px; color: var(--muted); font-weight: 500; }
@@ -387,7 +387,7 @@
   .scrim.on { display: grid; }
   .dialog {
     width: min(620px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow: auto;
-    background: var(--glass-bg), rgba(24,24,33,.78); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-radius: 20px; box-shadow: var(--glass-edge), var(--float-shadow);
+    background: var(--glass-bg), rgba(24,24,33,.55); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); border-radius: 20px; box-shadow: var(--glass-edge), var(--float-shadow);
     padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
   }
   .dialog h3 { margin: 0; font-size: 17px; font-weight: 600; }
@@ -499,11 +499,11 @@
   .remote .app { margin: 0 auto; max-width: 720px; padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); padding-bottom: max(22px, env(safe-area-inset-bottom)); }
   .remote #phoneBtn, .remote .hint { display: none !important; }
   .remote header { flex-wrap: wrap; row-gap: 10px; }   /* a phone in landscape gets touch-size controls that may not fit one row */
-  .banner { display: none; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--glass-bg), rgba(28,28,38,.6); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); }
+  .banner { display: none; flex-direction: column; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--glass-bg), rgba(28,28,38,.3); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); }
   .banner.on { display: flex; }
 
   /* ---------- device health: only shown when something needs attention ---------- */
-  .health { display: none; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: 16px; background: var(--glass-bg), rgba(28,28,38,.6); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); }
+  .health { display: none; flex-direction: column; gap: 12px; padding: 16px 18px; border-radius: 16px; background: var(--glass-bg), rgba(28,28,38,.3); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--glass-edge); }
   .health.on { display: flex; }
   .health .hrow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .health .htext { flex: 1; min-width: 220px; }
