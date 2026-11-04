@@ -1,6 +1,6 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
 # Download the official OpenRGB 1.0 Windows release, check its SHA-256 and unpack it, unmodified, into <Dest> (default: .\openrgb).
-# RGB Anywhere starts OpenRGB.exe from there as its own program. Source: https://openrgb.org, commit 81bbe18a84c2e507006f19dd252e397e40a56bfe.
+# EqRGB starts OpenRGB.exe from there as its own program. Source: https://openrgb.org, commit 81bbe18a84c2e507006f19dd252e397e40a56bfe.
 # It writes <Dest>\fetched-from.txt (the URL and SHA-256), so a later change of the pinned build replaces the old one.
 #   powershell -ExecutionPolicy Bypass -File fetch-openrgb.ps1 [-Dest <folder>]
 param([string]$Dest)

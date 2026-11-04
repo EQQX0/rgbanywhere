@@ -7,7 +7,7 @@ Use this with `python rgb.py --diagnose` and the logs to find which step broke. 
 1. **Request.** The window (`ui/index.html`, `api.set_color`), a phone (`PhoneHandler`, `/api/set_color`) or `rgbctl color` (`ControlHandler`, `/call/set_color`) calls `Api.set_color(target, hex)` in `rgb_app.pyw`.
    Fails if the lights are off (answer: "Turn the lights on"), or the target or colour is invalid (`rgb.set_group_color` refuses it). rgbctl prints these as `{"ok": false}` with exit code 1.
 2. **State.** `App.commit()` saves `state.json` and queues an "apply" job. A burst of changes (slider drags) collapses into one job.
-3. **Connect.** `App.rgb_worker` connects with `rgb.connect()`: a `RemoteBackend` to the daemon on 127.0.0.1:47823, using the token in `rgbd.token`. If the daemon does not answer, the app runs the "RGB Anywhere Lighting" task once and keeps trying for 45 s.
+3. **Connect.** `App.rgb_worker` connects with `rgb.connect()`: a `RemoteBackend` to the daemon on 127.0.0.1:47823, using the token in `rgbd.token`. If the daemon does not answer, the app runs the "EqRGB Lighting" task once and keeps trying for 45 s.
    Log: `logs\rgb.log` "lighting daemon not reachable"; the status reads "Lighting service not running" or "OpenRGB did not start".
 4. **Prepare.** `rgb.prepare()` sizes empty ARGB headers (`argb_size`, within leds_min..leds_max) and logs the device list ("devices (N): ...").
 5. **Apply.** `rgb.apply()` goes through every device:

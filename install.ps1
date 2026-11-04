@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-# RGB Anywhere installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
+# EqRGB installer. Run in PowerShell from this folder:  powershell -ExecutionPolicy Bypass -File install.ps1
 # Installs Python packages, fetches the bundled OpenRGB if needed, then sets up the login tasks, the startup entry and the Start menu shortcut.
 # Asks for admin once (the lighting daemon needs it to reach RAM lights and some boards).
 #   -NoStartup  do not start the app at login
@@ -16,7 +16,7 @@ $inProgramFiles = [bool](@($env:ProgramFiles, $env:ProgramW6432) | Where-Object 
         $here.StartsWith($_.TrimEnd('') + '', [StringComparison]::OrdinalIgnoreCase) })
 if (-not $inProgramFiles -and -not $AllowUnprotected) {
     Write-Host ("This folder is not in Program Files, so any program running as you could change the code the lighting " +
-                "service runs as admin. Install with Setup (RGB-Anywhere-Setup.exe), or, if you accept that (for example " +
+                "service runs as admin. Install with Setup (EqRGB-Setup.exe), or, if you accept that (for example " +
                 "for development), run this again with -AllowUnprotected.")
     exit 1
 }
@@ -40,7 +40,7 @@ $user = "$env:USERDOMAIN\$env:USERNAME"   # the elevated shell is still this use
 
 # 0. Where things live. The lighting daemon runs this folder's code as admin, so only admins may change it: Setup puts
 # it in Program Files. Settings, the app's logs and tokens stay in the user's folder ($data), which the daemon only reads.
-$data = Join-Path $env:LOCALAPPDATA 'RGB Anywhere'
+$data = Join-Path $env:LOCALAPPDATA 'EqRGB'
 $protected = [bool](@($env:ProgramFiles, $env:ProgramW6432) | Where-Object { $_ -and
         $here.StartsWith($_.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) })
 if ($protected) {
@@ -66,6 +66,33 @@ if ($protected) {
 } else {
     Write-Warning ("-AllowUnprotected: this copy is not in Program Files. The lighting service runs its code as admin from $here, " +
                    "which programs without admin rights can change. That is fine for development; for everyday use install with Setup.")
+}
+
+# 0b. This app used to be called "RGB Anywhere". Bring its settings and saved lighting over to the EqRGB folders now;
+# step 7 removes the old tasks, entries and folders once EqRGB is set up.
+$oldName = 'RGB Anywhere'
+$oldDir  = Join-Path $env:ProgramFiles $oldName
+$oldData = Join-Path $env:LOCALAPPDATA $oldName
+$oldInstall = (Test-Path -LiteralPath (Join-Path $oldDir 'rgbd.py')) -and ($oldDir -ne $here)
+if ($oldInstall) {
+    foreach ($f in 'config.json', 'original.json') {
+        $src = Join-Path $oldDir $f
+        if ((Test-Path -LiteralPath $src) -and -not (Test-Path (Join-Path $here $f))) {
+            try {
+                $text = [IO.File]::ReadAllText($src)
+                $text | ConvertFrom-Json | Out-Null   # only settings, nothing else, reach the admin side
+                [IO.File]::WriteAllText((Join-Path $here $f), $text, (New-Object Text.UTF8Encoding $false))
+            } catch { Write-Warning "$f from the RGB Anywhere install could not be read as JSON; not copied" }
+        }
+    }
+}
+$oldDataCopied = $false
+if ((Test-Path -LiteralPath $oldData) -and ($oldData -ne $data)) {
+    if (Test-Path -LiteralPath $data) { $oldDataCopied = $true }
+    else {
+        try { Copy-Item -LiteralPath $oldData -Destination $data -Recurse -Force; $oldDataCopied = $true }
+        catch { Write-Warning "Could not copy your settings from $oldData ($_); they stay there" }
+    }
 }
 
 # 1. Python. A release zip carries its own (python\ next to this script) with every package installed; a source checkout uses yours.
@@ -136,34 +163,34 @@ function New-RgbTask($name, $arg, $logon, $unlimited) {
     Register-ScheduledTask @p | Out-Null
     Write-Host "Task '$name' registered"
 }
-# "RGB Anywhere Lighting" is the elevated lighting daemon (rgbd.py); "RGB Anywhere Rescan" asks it to re-detect devices.
-New-RgbTask 'RGB Anywhere Lighting' ('"{0}"' -f (Join-Path $here 'rgbd.py')) $true $true
-New-RgbTask 'RGB Anywhere Rescan'   ('"{0}" --rescan' -f (Join-Path $here 'rgbd.py')) $false $false
+# "EqRGB Lighting" is the elevated lighting daemon (rgbd.py); "EqRGB Rescan" asks it to re-detect devices.
+New-RgbTask 'EqRGB Lighting' ('"{0}"' -f (Join-Path $here 'rgbd.py')) $true $true
+New-RgbTask 'EqRGB Rescan'   ('"{0}" --rescan' -f (Join-Path $here 'rgbd.py')) $false $false
 
 # 5. Start the app at login (hidden in the tray) and make the Start menu shortcut
 if (-not $NoStartup) {
     $run = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     # HKCU of the elevated shell is the same user's hive
-    Set-ItemProperty $run -Name 'RGB Anywhere' -Value ('"{0}" "{1}" --tray' -f $pyw, (Join-Path $here 'rgb_app.pyw'))
+    Set-ItemProperty $run -Name 'EqRGB' -Value ('"{0}" "{1}" --tray' -f $pyw, (Join-Path $here 'rgb_app.pyw'))
     Write-Host "Startup entry set"
 }
 $sc = @((Join-Path $here 'make_shortcut.py'))
 # a desktop shortcut from an earlier install would still point at the old folder
-if ($Desktop -or (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'RGB Anywhere.lnk'))) { $sc += '--desktop' }
+if ($Desktop -or ((Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'EqRGB.lnk')) -or (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) ($oldName + '.lnk'))))) { $sc += '--desktop' }
 & $py @sc
 if ($LASTEXITCODE) { throw "could not create the shortcut" }
 
 # 6. Entry in Settings > Apps (per user). Uninstall.exe is a copy of the Setup exe that the Setup window puts here.
 $unexe = Join-Path $here 'Uninstall.exe'
 if (Test-Path $unexe) {
-    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RGB Anywhere'
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\EqRGB'
     New-Item $key -Force | Out-Null
     $ver = if (Test-Path (Join-Path $here 'version.txt')) { (Get-Content (Join-Path $here 'version.txt') -TotalCount 1).Trim() } else { '' }
     $kb = [int]((Get-ChildItem $here -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum / 1KB)
     $vals = @{
-        DisplayName = 'RGB Anywhere'; DisplayVersion = $ver; Publisher = 'EQQX2'; InstallLocation = $here
+        DisplayName = 'EqRGB'; DisplayVersion = $ver; Publisher = 'EQQX2'; InstallLocation = $here
         DisplayIcon = (Join-Path $here 'rgb.ico'); UninstallString = ('"{0}" /uninstall' -f $unexe)
-        URLInfoAbout = 'https://github.com/EQQX0/rgbanywhere'
+        URLInfoAbout = 'https://github.com/EQQX0/EqRGB'
     }
     foreach ($k in $vals.Keys) { Set-ItemProperty $key -Name $k -Value $vals[$k] }
     foreach ($k in 'NoModify', 'NoRepair') { Set-ItemProperty $key -Name $k -Value 1 -Type DWord }
@@ -171,12 +198,32 @@ if (Test-Path $unexe) {
     Write-Host "Added to Settings > Apps"
 }
 
+# 7. Remove what the "RGB Anywhere" install left behind: its tasks, startup entry, Settings > Apps entry, shortcuts,
+# firewall rule and folders. Settings were copied above; the old install folder is only deleted if it holds the old app.
+foreach ($t in 'RGB Anywhere Lighting', 'RGB Anywhere Rescan') {
+    Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
+}
+Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name $oldName -ErrorAction SilentlyContinue
+Remove-Item ('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\' + $oldName) -Recurse -ErrorAction SilentlyContinue
+foreach ($dir in 'Programs', 'Desktop') { Remove-Item (Join-Path ([Environment]::GetFolderPath($dir)) ($oldName + '.lnk')) -ErrorAction SilentlyContinue }
+& netsh.exe advfirewall firewall delete rule name="RGB Anywhere Phone" 2>$null | Out-Null
+if ($oldInstall -and (Split-Path $oldDir -Leaf) -eq $oldName) {
+    Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ProcessId -ne $PID -and
+            $_.ExecutablePath.StartsWith($oldDir + '\', [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 1
+    Remove-Item -LiteralPath $oldDir -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $oldDir) { Write-Warning "Could not remove the old folder $oldDir; you can delete it by hand." }
+}
+if ($oldDataCopied -and (Split-Path $oldData -Leaf) -eq $oldName) { Remove-Item -LiteralPath $oldData -Recurse -Force -ErrorAction SilentlyContinue }
+
 if ($Quiet) {
-    Start-ScheduledTask -TaskName 'RGB Anywhere Lighting'   # start the daemon now instead of at the next login
+    Start-ScheduledTask -TaskName 'EqRGB Lighting'   # start the daemon now instead of at the next login
     Write-Host "Done."
     Stop-Transcript | Out-Null
     exit 0
 }
 $where = if ($Desktop) { 'the desktop' } else { 'the Start menu' }
-Write-Host "`nDone. Start 'RGB Anywhere' from $where, or run:  schtasks /run /tn `"RGB Anywhere Lighting`""
+Write-Host "`nDone. Start 'EqRGB' from $where, or run:  schtasks /run /tn `"EqRGB Lighting`""
 Write-Host "Optional per-PC settings (monitor, vendor workarounds, device overrides) go in $here\config.json - see README.md."

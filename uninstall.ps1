@@ -1,14 +1,14 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-# Removes RGB Anywhere: scheduled tasks, startup entry, shortcuts, the Settings > Apps entry, the install folder and the
-# user's settings folder (%LOCALAPPDATA%\RGB Anywhere).
+# Removes EqRGB: scheduled tasks, startup entry, shortcuts, the Settings > Apps entry, the install folder and the
+# user's settings folder (%LOCALAPPDATA%\EqRGB).
 # Run by Uninstall.exe (elevated, hidden). The PawnIO driver is left alone because other programs can use it.
 param([Parameter(Mandatory)][string]$Dir)
 $ErrorActionPreference = 'Continue'
 $Dir = (Resolve-Path -LiteralPath $Dir).Path.TrimEnd('\')
-# Safety: only ever delete a folder named "RGB Anywhere" that holds this app.
-if ((Split-Path $Dir -Leaf) -ne 'RGB Anywhere' -or -not (Test-Path (Join-Path $Dir 'rgbd.py'))) { Write-Host "Refusing to delete $Dir"; exit 1 }
+# Safety: only ever delete a folder named "EqRGB" that holds this app.
+if ((Split-Path $Dir -Leaf) -ne 'EqRGB' -or -not (Test-Path (Join-Path $Dir 'rgbd.py'))) { Write-Host "Refusing to delete $Dir"; exit 1 }
 
-# Hand the lights back first, while the daemon still runs: each device gets the lighting it had before RGB Anywhere
+# Hand the lights back first, while the daemon still runs: each device gets the lighting it had before EqRGB
 # first changed it (original.json), so the vendor's app or the device's own effect takes over again.
 $py = Join-Path $Dir 'python\python.exe'
 if ((Test-Path $py) -and (Test-Path (Join-Path $Dir 'original.json'))) {
@@ -16,7 +16,7 @@ if ((Test-Path $py) -and (Test-Path (Join-Path $Dir 'original.json'))) {
     if (-not $p.WaitForExit(60000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; Write-Host 'Restoring the original lighting timed out' }
 }
 
-foreach ($t in 'RGB Anywhere Lighting', 'RGB Anywhere Rescan') {
+foreach ($t in 'EqRGB Lighting', 'EqRGB Rescan') {
     Stop-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
     Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue
 }
@@ -24,14 +24,14 @@ Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.Process
         $_.ExecutablePath.StartsWith($Dir + '\', [StringComparison]::OrdinalIgnoreCase) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'RGB Anywhere' -ErrorAction SilentlyContinue
-Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RGB Anywhere' -Recurse -ErrorAction SilentlyContinue
-Remove-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'RGB Anywhere.lnk') -ErrorAction SilentlyContinue
-Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'RGB Anywhere.lnk') -ErrorAction SilentlyContinue
+Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'EqRGB' -ErrorAction SilentlyContinue
+Remove-Item 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\EqRGB' -Recurse -ErrorAction SilentlyContinue
+Remove-Item (Join-Path ([Environment]::GetFolderPath('Programs')) 'EqRGB.lnk') -ErrorAction SilentlyContinue
+Remove-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'EqRGB.lnk') -ErrorAction SilentlyContinue
 
 # The settings, the app's logs and its tokens, in the user's folder when the code is in Program Files. rmdir removes a
 # junction itself instead of what it points to, so a folder planted there can't make this delete anything else.
-$data = Join-Path $env:LOCALAPPDATA 'RGB Anywhere'
+$data = Join-Path $env:LOCALAPPDATA 'EqRGB'
 if ($data -ne $Dir -and (Test-Path -LiteralPath $data)) { & cmd.exe /c "rmdir /s /q `"$data`"" }
 
 # Uninstall.exe is still running, so delete the folder a moment after it exits.

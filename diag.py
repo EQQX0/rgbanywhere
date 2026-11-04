@@ -45,10 +45,10 @@ CONFLICT_FIX = {
     "Razer Synapse": "In Synapse, set each Razer device's lighting to Static, colour black (Synapse then stops sending colours), "
                      "or quit Synapse from the tray and turn it off in Task Manager > Startup apps.",
     "Razer Chroma SDK": "Games and apps use it to light Razer devices; quit them, or turn off Chroma Connect in Synapse.",
-    "Corsair iCUE": "Quit it from the tray. Running it together with RGB Anywhere can knock Corsair RAM into a mode where "
+    "Corsair iCUE": "Quit it from the tray. Running it together with EqRGB can knock Corsair RAM into a mode where "
                     "it ignores colours; set icue_quit_on_close in config.json.",
     "ASUS Armoury Crate": "Turn off its Aura Sync lighting, or quit it and its lighting service.",
-    "Logitech G HUB": "G HUB repaints the keyboard and mouse after idle and when a game starts; RGB Anywhere sends its colors "
+    "Logitech G HUB": "G HUB repaints the keyboard and mouse after idle and when a game starts; EqRGB sends its colors "
                       "again each time. To stop it for good, set those devices' lighting to off or Static in G HUB.",
 }
 
@@ -200,7 +200,7 @@ def _start_hint(err, d):
     """Plain advice for SdkBackend's start errors."""
     log = "OpenRGB's log is in %s." % d["core_log_dir"]
     if err.startswith("FileNotFoundError") or not d["core_exe_present"]:
-        return ("OpenRGB is missing (%s). Reinstall RGB Anywhere, or in a source checkout run "
+        return ("OpenRGB is missing (%s). Reinstall EqRGB, or in a source checkout run "
                 "'powershell -ExecutionPolicy Bypass -File fetch-openrgb.ps1'." % d["core_exe"])
     if "Another program is using port" in err:
         return ("OpenRGB could not start: %s Close that program, then press Rescan." % err.split(": ", 1)[-1])
@@ -256,7 +256,7 @@ def hints(d):
         # Not Memory integrity by default: PawnIO 2.2.0 loads with it on. It is a demand-start service that nothing starts
         # after a restart, and the lighting daemon starts it with the next Rescan.
         out.append("The PawnIO driver service is STOPPED (last exit code 31). It does not start by itself after a restart; "
-                   "RGB Anywhere starts it when it launches OpenRGB, so press Rescan first. If it stays stopped, run "
+                   "EqRGB starts it when it launches OpenRGB, so press Rescan first. If it stays stopped, run "
                    "'sc start PawnIO' as admin and read the error it gives.%s" % (
                        " Memory integrity is on and can block some drivers, but only turn it off (Windows Security > Device "
                        "security > Core isolation) if that error says the driver was blocked."
@@ -267,7 +267,7 @@ def hints(d):
     elif svc != "RUNNING":
         out.append("The PawnIO driver service is %s. Restart the PC, or run 'sc start PawnIO' as admin, then press Rescan." % svc)
     if d["core_exe_present"] and (not d["pawnio"]["lib"] or not d["pawnio"]["modules"]):
-        out.append("PawnIOLib.dll or the PawnIO .bin modules are missing from the openrgb folder. Reinstall RGB Anywhere.")
+        out.append("PawnIOLib.dll or the PawnIO .bin modules are missing from the openrgb folder. Reinstall EqRGB.")
     # RAM sits on the motherboard's SMBus, which only PawnIO opens; the NVIDIA/AMD GPU buses don't reach it.
     if d["daemon"] and not core.get("start_error") and svc == "RUNNING" and d["elevated"] and not ram and "PawnIO" not in problems:
         out.append("PawnIO runs but no RAM was found. Close other RGB programs, then press Rescan; if it stays missing, "
@@ -283,7 +283,7 @@ def hints(d):
     skipped = [x["name"] for x in devs if x["modes"] and not any(m["name"].lower() in ("direct", "static", "custom")
                                                                    for m in x["modes"])]
     if skipped:
-        out.append("%s only has effect modes (no Static or Direct), so RGB Anywhere leaves it as it is. Its colour is set "
+        out.append("%s only has effect modes (no Static or Direct), so EqRGB leaves it as it is. Its colour is set "
                    "by its own controller or vendor app." % ", ".join(skipped))
     if d["devices"] is not None and not devs and not core.get("start_error"):
         out.append("No device was found at all. OpenRGB's log lists each detector it tried.")
@@ -307,7 +307,7 @@ def hints(d):
 
 def text(d):
     """Plain-text report of collect()'s or collect_local()'s result."""
-    lines = ["RGB Anywhere diagnosis", ""]
+    lines = ["EqRGB diagnosis", ""]
     core = d["core"]
     if d["daemon"]:
         lines.append("Lighting daemon: pid %s, %s" % (d["pid"], "running as admin" if d["elevated"] else "NOT running as admin"))

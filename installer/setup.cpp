@@ -1,12 +1,12 @@
-// RGB Anywhere Setup: a small installer window. The release build carries the app zip inside the exe (see
+// EqRGB Setup: a small installer window. The release build carries the app zip inside the exe (see
 // installerundle.ps1); a plain build downloads the latest release zip instead. Either way it checks the zip's
 // SHA-256 and hands it to one elevated step (Windows shows its permission prompt then), which unpacks it to
-// %ProgramFiles%\RGB Anywhere and runs install.ps1. The code goes to Program Files because the lighting daemon runs it
-// as admin: only admins may change it. The user's settings stay in %LOCALAPPDATA%\RGB Anywhere. No console window.
+// %ProgramFiles%\EqRGB and runs install.ps1. The code goes to Program Files because the lighting daemon runs it
+// as admin: only admins may change it. The user's settings stay in %LOCALAPPDATA%\EqRGB. No console window.
 //
-//   RGB-Anywhere-Setup.exe          normal use
-//   RGB-Anywhere-Setup.exe /auto    start installing with the default choices, no clicking (for testing)
-//   RGBANYWHERE_NO_INSTALL=1        stop after checking the zip (for testing; skips the permission prompt)
+//   EqRGB-Setup.exe          normal use
+//   EqRGB-Setup.exe /auto    start installing with the default choices, no clicking (for testing)
+//   EQRGB_NO_INSTALL=1        stop after checking the zip (for testing; skips the permission prompt)
 //
 // Copyright (C) 2026 EQQX2
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -37,8 +37,8 @@
 #define DM_GETDEFID (WM_USER + 0)
 #endif
 
-static const wchar_t *BASE = L"https://github.com/EQQX0/rgbanywhere/releases/latest/download/";
-static const wchar_t *ZIPNAME = L"RGBAnywhere-win64.zip";
+static const wchar_t *BASE = L"https://github.com/EQQX0/EqRGB/releases/latest/download/";
+static const wchar_t *ZIPNAME = L"EqRGB-win64.zip";
 
 enum Ids { ID_INSTALL = 1, ID_CANCEL = 2, ID_LOG = 3, ID_CHK_DESKTOP = 10, ID_CHK_STARTUP, ID_CHK_LAUNCH };
 enum Msgs { WM_PROGRESS = WM_APP + 1, WM_STATUS, WM_FINISHED, WM_MARQUEE };
@@ -67,7 +67,7 @@ static int g_dpi = 96, g_page = PAGE_OPTIONS, g_pct = 0;
 static volatile bool g_cancel = false, g_elevated = false;
 static bool g_success = false, g_launch = true, g_auto = false, g_marquee = false;
 static bool g_optDesktop = true, g_optStartup = true;
-static std::wstring g_dest, g_legacy, g_log;
+static std::wstring g_dest, g_legacy, g_oldDest, g_oldData, g_log;
 
 static int S(int v) { return MulDiv(v, g_dpi, 96); }
 
@@ -223,8 +223,9 @@ static const char INSTALL_PS1[] = R"PS($ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $Dir | Out-Null
 $log = Join-Path $Dir 'install.log'
 try {
+    Stop-ScheduledTask -TaskName 'EqRGB Lighting' -ErrorAction SilentlyContinue
     Stop-ScheduledTask -TaskName 'RGB Anywhere Lighting' -ErrorAction SilentlyContinue
-    foreach ($d in @($Dir, $Legacy)) {
+    foreach ($d in @($Dir, $Legacy, $OldDir, $OldData)) {
         Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ProcessId -ne $PID -and
                 $_.ExecutablePath.StartsWith($d + '\', [StringComparison]::OrdinalIgnoreCase) } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
@@ -311,7 +312,7 @@ static DWORD WINAPI worker(LPVOID p)
             return 0;
         }
     } else {
-        HINTERNET net = InternetOpenW(L"RGBAnywhereSetup/1.1", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
+        HINTERNET net = InternetOpenW(L"EqRGBSetup/1.1", INTERNET_OPEN_TYPE_PRECONFIG, NULL, NULL, 0);
         if (!net) { finish(false, L"Could not start the network stack."); return 0; }
 
         post_status(L"Preparing the download...");
@@ -348,7 +349,7 @@ static DWORD WINAPI worker(LPVOID p)
     // The uninstaller is this exe without the zip; the elevated step moves it into the install folder
     wchar_t self[MAX_PATH];
     GetModuleFileNameW(NULL, self, MAX_PATH);   // Settings > Apps runs it with /uninstall
-    std::wstring stub = std::wstring(tmp) + L"RGBAnywhere-Uninstall.exe";
+    std::wstring stub = std::wstring(tmp) + L"EqRGB-Uninstall.exe";
     bool stub_ok = pay.found ? copy_range(self, 0, pay.off, stub, 0, 0, L"") : CopyFileW(self, stub.c_str(), FALSE) != 0;
     // Both hashes come from sources a normal process can't change: this exe is locked while it runs. Hashing the temp
     // files here instead would let another process swap them first and have the elevated step accept the swap.
@@ -361,8 +362,9 @@ static DWORD WINAPI worker(LPVOID p)
     }
     // An earlier install: in Program Files, or (before 0.3) in %LOCALAPPDATA%, which the elevated step moves from
     bool update = GetFileAttributesW((g_dest + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES ||
-                  GetFileAttributesW((g_legacy + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES;
-    if (!env(L"RGBANYWHERE_NO_INSTALL").empty()) {
+                  GetFileAttributesW((g_legacy + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES ||
+                  GetFileAttributesW((g_oldDest + L"\\rgbd.py").c_str()) != INVALID_FILE_ATTRIBUTES;
+    if (!env(L"EQRGB_NO_INSTALL").empty()) {
         cleanup();
         post_progress(100);
         finish(true, L"The files are ready (install step skipped).");
@@ -373,7 +375,7 @@ static DWORD WINAPI worker(LPVOID p)
     post_progress(88);
     PostMessageW(g_wnd, WM_MARQUEE, 1, 0);
     g_elevated = true;
-    std::wstring script = L"$Dir = " + ps_quote(g_dest) + L"; $Legacy = " + ps_quote(g_legacy) + L"; $Zip = " + ps_quote(zip) +
+    std::wstring script = L"$Dir = " + ps_quote(g_dest) + L"; $Legacy = " + ps_quote(g_legacy) + L"; $OldDir = " + ps_quote(g_oldDest) + L"; $OldData = " + ps_quote(g_oldData) + L"; $Zip = " + ps_quote(zip) +
                           L"; $ZipSha = " + ps_quote(widen(zip_sha.c_str())) + L"; $Stub = " + ps_quote(stub) +
                           L"; $StubSha = " + ps_quote(widen(stub_sha.c_str())) + L"; $Desktop = $" +
                           (opt.desktop ? L"true" : L"false") + L"; $NoStartup = $" + (opt.startup ? L"false" : L"true") +
@@ -394,7 +396,7 @@ static DWORD WINAPI worker(LPVOID p)
         g_elevated = false;
         cleanup();
         finish(false, e == ERROR_CANCELLED
-                          ? L"Permission was declined. RGB Anywhere needs it to run the lighting service. Run Setup again and choose Yes."
+                          ? L"Permission was declined. EqRGB needs it to run the lighting service. Run Setup again and choose Yes."
                           : L"Could not start the installer step.");
         return 0;
     }
@@ -663,7 +665,7 @@ static void finish_page(bool ok, const std::wstring &msg)
     if (!ok && GetFileAttributesW(g_log.c_str()) == INVALID_FILE_ATTRIBUTES) g_log.clear();
     g_marquee = false;
     if (ok) {
-        SetWindowTextW(g_title, L"RGB Anywhere is installed");
+        SetWindowTextW(g_title, L"EqRGB is installed");
         std::wstring t = L"You can open it any time from the shortcut it created.";
         if (!msg.empty()) t = msg;
         SetWindowTextW(g_msg, t.c_str());
@@ -688,7 +690,7 @@ static void primary()
 {
     if (g_page == PAGE_OPTIONS) start_install();
     else if (g_page == PAGE_DONE) {
-        if (g_success && g_launch && env(L"RGBANYWHERE_NO_INSTALL").empty()) launch_app();
+        if (g_success && g_launch && env(L"EQRGB_NO_INSTALL").empty()) launch_app();
         DestroyWindow(g_wnd);
     }
 }
@@ -722,13 +724,13 @@ static LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l)
         g_bgBrush = CreateSolidBrush(C_BG);
         g_panelBrush = CreateSolidBrush(C_PANEL);
 
-        g_title = make(L"STATIC", L"Install RGB Anywhere", SS_LEFT | WS_VISIBLE, 32, 30, 456, 36, 0, g_fontTitle);
+        g_title = make(L"STATIC", L"Install EqRGB", SS_LEFT | WS_VISIBLE, 32, 30, 456, 36, 0, g_fontTitle);
         g_sub = make(L"STATIC", L"One app for all your PC lighting.", SS_LEFT | WS_VISIBLE, 32, 70, 456, 20, 0, g_font);
         g_pathLabel = make(L"STATIC", L"Install location", SS_LEFT, 32, 108, 456, 18, 0, g_fontBold);
         g_path = make(L"STATIC", g_dest.c_str(), SS_LEFT | SS_PATHELLIPSIS | SS_CENTERIMAGE, 44, 131, 436, 26, 0, g_font);
         g_chkDesktop = make(L"BUTTON", L"Add a shortcut to the desktop", BS_OWNERDRAW | WS_TABSTOP, 32, 284, 456, 26, ID_CHK_DESKTOP, g_font);
-        g_chkStartup = make(L"BUTTON", L"Start RGB Anywhere when Windows starts", BS_OWNERDRAW | WS_TABSTOP, 32, 311, 456, 26, ID_CHK_STARTUP, g_font);
-        g_chkLaunch = make(L"BUTTON", L"Open RGB Anywhere when setup finishes", BS_OWNERDRAW | WS_TABSTOP, 32, 338, 456, 26, ID_CHK_LAUNCH, g_font);
+        g_chkStartup = make(L"BUTTON", L"Start EqRGB when Windows starts", BS_OWNERDRAW | WS_TABSTOP, 32, 311, 456, 26, ID_CHK_STARTUP, g_font);
+        g_chkLaunch = make(L"BUTTON", L"Open EqRGB when setup finishes", BS_OWNERDRAW | WS_TABSTOP, 32, 338, 456, 26, ID_CHK_LAUNCH, g_font);
         g_note = make(L"STATIC", L"Windows asks for permission once, to add the lighting service and the PawnIO driver (for RAM lights). About 250 MB of disk space.", SS_LEFT, 32, 368, 456, 32, 0, g_fontSmall);
 
         g_status = make(L"STATIC", L"", SS_LEFT, 32, 212, 456, 22, 0, g_font);
@@ -849,13 +851,13 @@ static int uninstall()
     GetModuleFileNameW(NULL, self, MAX_PATH);
     std::wstring dir = self;
     dir.resize(dir.find_last_of(L'\\'));
-    if (MessageBoxW(NULL, L"Remove RGB Anywhere from this PC?\n\nYour settings are deleted too. The PawnIO driver stays installed.",
-                    L"Uninstall RGB Anywhere", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return 2;
+    if (MessageBoxW(NULL, L"Remove EqRGB from this PC?\n\nYour settings are deleted too. The PawnIO driver stays installed.",
+                    L"Uninstall EqRGB", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return 2;
     // Run from the install folder: in Program Files only admins can change it (a copy in %TEMP% could be swapped).
     // PowerShell reads the whole script before it runs, and the script deletes the folder only after it exits.
     std::wstring script = dir + L"\\uninstall.ps1";
     if (GetFileAttributesW(script.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        MessageBoxW(NULL, L"uninstall.ps1 is missing from the install folder.", L"Uninstall RGB Anywhere", MB_OK | MB_ICONERROR);
+        MessageBoxW(NULL, L"uninstall.ps1 is missing from the install folder.", L"Uninstall EqRGB", MB_OK | MB_ICONERROR);
         return 1;
     }
     wchar_t sys[MAX_PATH];
@@ -873,8 +875,8 @@ static int uninstall()
     DWORD code = 1;
     GetExitCodeProcess(sei.hProcess, &code);
     CloseHandle(sei.hProcess);
-    MessageBoxW(NULL, code == 0 ? L"RGB Anywhere was removed." : L"Could not remove everything. Close RGB Anywhere and try again.",
-                L"Uninstall RGB Anywhere", MB_OK | (code == 0 ? MB_ICONINFORMATION : MB_ICONERROR));
+    MessageBoxW(NULL, code == 0 ? L"EqRGB was removed." : L"Could not remove everything. Close EqRGB and try again.",
+                L"Uninstall EqRGB", MB_OK | (code == 0 ? MB_ICONINFORMATION : MB_ICONERROR));
     return (int)code;
 }
 
@@ -885,8 +887,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd, int)
     wchar_t local[MAX_PATH], pf[MAX_PATH];
     if (FAILED(SHGetFolderPathW(NULL, CSIDL_LOCAL_APPDATA, NULL, 0, local))) return 1;
     if (FAILED(SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILES, NULL, 0, pf))) return 1;
-    g_dest = std::wstring(pf) + L"\\RGB Anywhere";       // the code: only admins can change it
-    g_legacy = std::wstring(local) + L"\\RGB Anywhere";  // the user's settings; also where installs before 0.3 put the code
+    g_dest = std::wstring(pf) + L"\\EqRGB";       // the code: only admins can change it
+    g_legacy = std::wstring(local) + L"\\EqRGB";  // the user's settings; also where installs before 0.3 put the code
+    g_oldDest = std::wstring(pf) + L"\\RGB Anywhere";   // the app's folders before it was renamed EqRGB (install.ps1 moves them)
+    g_oldData = std::wstring(local) + L"\\RGB Anywhere";
 
     INITCOMMONCONTROLSEX ic = {sizeof ic, ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&ic);
@@ -895,7 +899,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd, int)
     wc.hInstance = inst;
     wc.hCursor = LoadCursorW(NULL, IDC_ARROW);
     wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1));
-    wc.lpszClassName = L"RGBAnywhereSetup";
+    wc.lpszClassName = L"EqRGBSetup";
     RegisterClassW(&wc);
 
     UINT dpi = GetDpiForSystem();
@@ -903,7 +907,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmd, int)
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
     AdjustWindowRectExForDpi(&r, style, FALSE, WS_EX_CONTROLPARENT, dpi);
     int w = r.right - r.left, h = r.bottom - r.top;
-    HWND wnd = CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, L"RGB Anywhere Setup", style,
+    HWND wnd = CreateWindowExW(WS_EX_CONTROLPARENT, wc.lpszClassName, L"EqRGB Setup", style,
                                (GetSystemMetrics(SM_CXSCREEN) - w) / 2, (GetSystemMetrics(SM_CYSCREEN) - h) / 2, w, h, NULL, NULL, inst, NULL);
     ShowWindow(wnd, SW_SHOW);
     SetForegroundWindow(wnd);

@@ -1,4 +1,4 @@
-"""RGB Anywhere: lighting (RAM, fans, keyboard, mouse via the bundled OpenRGB) and the DeepCool cooler screen.
+"""EqRGB: lighting (RAM, fans, keyboard, mouse via the bundled OpenRGB) and the DeepCool cooler screen.
 
 UI is ui/index.html in a WebView2 window (pywebview). A tiny localhost server serves the page and a
 cached copy of whatever the cooler is playing, so the preview never locks DeepCool's file.
@@ -87,7 +87,7 @@ from PIL import Image  # noqa: E402
 from webview.dom import DOMEventHandler  # noqa: E402
 
 APP_ID = "Admin.RGBControl"  # taskbar identity; matches the Start menu shortcut
-TITLE = "RGB Anywhere"
+TITLE = "EqRGB"
 SINGLE_PORT = 47321  # a second launch connects here to show the running window
 UI = os.path.join(HERE, "ui", "index.html")
 UI_IMAGES = {"/logo.png": "logo.png", "/favicon.ico": "logo.png", "/apple-touch-icon.png": "apple-touch-icon.png"}
@@ -104,14 +104,14 @@ CONTROL_PORT = 47824  # rgbctl (the command line, for scripts and AI agents): 12
 CONTROL_TOKEN = os.path.join(applog.DATA_DIR, "control.token")
 CONTROL_METHODS = {"init", "set_color", "set_brightness", "set_mode", "apply_preset", "apply_profile", "monitors_off",
                    "rescan", "set_sync_accent", "set_exit"}
-FW_RULE = "RGB Anywhere Phone"
+FW_RULE = "EqRGB Phone"
 # What a phone may call. Deliberately excludes desktop-only things (file dialog, calibration test mode).
 PHONE_METHODS = {"init", "set_color", "set_brightness", "set_mode", "set_exit", "apply_preset", "save_preset",
                  "update_preset", "delete_preset", "restore_preset", "restore_screen", "rescan", "set_sync_accent",
                  "monitors_off", "save_profile", "update_profile", "delete_profile", "restore_profile",
                  "apply_profile", "calibrate", "set_calibration", "reset_calibration", "apply_screen", "discard_staged", "log_client",
                  "set_screen_details", "get_health", "fix_it"}
-APK_PATH = os.path.join(HERE, "android", "RGB-Control.apk")
+APK_PATH = os.path.join(HERE, "android", "EqRGB.apk")
 CALIBRATION_TIMEOUT = 600  # seconds: a phone that wanders off mid-calibration can't leave the lights on a test color
 RESCAN_GAP = 30  # seconds between rescans: restarting OpenRGB again sooner tends to cost a RAM stick
 RESCAN_RETRIES = 2  # extra rescans when one brings the RAM up wrong (see rgb.ram_problem)
@@ -229,6 +229,8 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_file(f, "image/jpeg")
                 else:
                     self.send_error(404)
+            elif path in UI_IMAGES:
+                self.send_file(os.path.join(HERE, "ui", UI_IMAGES[path]), "image/png")
             else:
                 self.send_error(404)
         except (ConnectionError, OSError):
@@ -354,7 +356,7 @@ class PhoneHandler(Handler):
             applog.event("phone_denied", ok=False, ip=ip, path=applog.redact(self.path), error=why)
         body = (b"<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
                 b"<body style='font:16px system-ui;background:#0d0d11;color:#ddd;padding:32px'>"
-                b"<h2>RGB Anywhere</h2><p>Open the link from the QR code in RGB Anywhere on your PC "
+                b"<h2>EqRGB</h2><p>Open the link from the QR code in EqRGB on your PC "
                 b"(Phone button).</p>")
         self.send_response(401)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -409,7 +411,7 @@ class PhoneHandler(Handler):
                 size = os.path.getsize(APK_PATH)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/vnd.android.package-archive")
-                self.send_header("Content-Disposition", 'attachment; filename="RGB-Control.apk"')
+                self.send_header("Content-Disposition", 'attachment; filename="EqRGB.apk"')
                 self.send_header("Content-Length", str(size))
                 self.end_headers()
                 with open(APK_PATH, "rb") as f:
@@ -1058,7 +1060,7 @@ class App:
             self.monitors_off(wake_lights=True)
 
     def rescan(self, retry=False):
-        """Re-detect devices via the elevated "RGB Anywhere Rescan" task (rgbd.py --rescan), then reconnect.
+        """Re-detect devices via the elevated "EqRGB Rescan" task (rgbd.py --rescan), then reconnect.
 
         Asked again within RESCAN_GAP of the last one, it waits out the gap first; asking more often than
         that changes nothing. `retry` marks a rescan the app repeats by itself (see after_rescan).
@@ -1098,7 +1100,7 @@ class App:
         r = subprocess.run(["schtasks", "/run", "/tn", rgb.rgbcore_client.TASK_RESCAN], capture_output=True, text=True, errors="ignore",
                            creationflags=NO_WINDOW)
         ok = r.returncode == 0
-        log.info("rescan: schtasks /run 'RGB Anywhere Rescan' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
+        log.info("rescan: schtasks /run 'EqRGB Rescan' -> exit %s %s", r.returncode, (r.stdout + r.stderr).strip()[:200])
         applog.event("openrgb_rescan", ok=ok, error=None if ok else (r.stdout + r.stderr).strip()[:200])
 
         def later():
@@ -1379,7 +1381,7 @@ class App:
             view = self._update_view()
             if view["available"] and view["latest"] != self.update_told:
                 self.update_told = view["latest"]
-                log.info("RGB Anywhere %s is out (this is %s)", view["latest"], view["current"])
+                log.info("EqRGB %s is out (this is %s)", view["latest"], view["current"])
                 if self.tray:
                     self.tray.update_menu()  # adds "Update to <version>"
             return view
@@ -1909,7 +1911,7 @@ class App:
             return lambda icon, item: self.apply_preset(p)
 
         def items():  # rebuilt on update_menu(), so it follows preset edits
-            yield pystray.MenuItem("Open RGB Anywhere", lambda i, it: self.show(), default=True)
+            yield pystray.MenuItem("Open EqRGB", lambda i, it: self.show(), default=True)
             yield pystray.Menu.SEPARATOR
             for p in self.presets:
                 yield pystray.MenuItem(p["name"], preset(p))
@@ -2116,7 +2118,7 @@ def single_instance():
     except OSError:
         try:
             socket.create_connection(("127.0.0.1", SINGLE_PORT), timeout=2).close()
-            log.info("another RGB Anywhere is already running; asked it to show its window")
+            log.info("another EqRGB is already running; asked it to show its window")
         except OSError as e:
             log.warning("port %d is busy but nothing answered there (%s); not starting a second copy", SINGLE_PORT, e)
         return None
@@ -2200,7 +2202,7 @@ def main():
         applog.event("webview", ok=False, error=applog.format_exc().strip().splitlines()[-1])
         raise
     finally:
-        log.info("=== RGB Anywhere exiting (session %s) ===", applog.SESSION)
+        log.info("=== EqRGB exiting (session %s) ===", applog.SESSION)
 
 
 if __name__ == "__main__":

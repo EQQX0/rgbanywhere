@@ -82,7 +82,7 @@ class Through:
     def test_original_lighting_is_saved_once_and_restored(self):
         path = os.path.join(self.tmp.name, "original.json")
         with mock.patch.object(rgb, "ORIGINAL", path):
-            with self.srv.guard:  # what the devices showed before RGB Anywhere
+            with self.srv.guard:  # what the devices showed before EqRGB
                 self.srv.devices[0].modes[1].colors = [u.RGBColor(255, 0, 0)]
                 self.srv.devices[1].colors = [u.RGBColor(0, 255, 0)] * 4
             self.assertEqual(rgb.remember_originals(self.backend), 5)

@@ -1,5 +1,5 @@
 # Copyright (C) 2026 EQQX2. SPDX-License-Identifier: GPL-3.0-or-later
-"""Create the app shortcut with the app's taskbar ID so pinning opens RGB Anywhere, not Python.
+"""Create the app shortcut with the app's taskbar ID so pinning opens EqRGB, not Python.
 
   python make_shortcut.py             Start menu shortcut
   python make_shortcut.py --desktop   Start menu and desktop shortcuts
@@ -13,7 +13,7 @@ from win32com.shell import shell, shellcon
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PYW = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-NAME = "RGB Anywhere.lnk"
+NAME = "EqRGB.lnk"
 START = os.path.join(os.environ["APPDATA"], r"Microsoft\Windows\Start Menu\Programs", NAME)
 DESKTOP = os.path.join(shell.SHGetFolderPath(0, shellcon.CSIDL_DESKTOPDIRECTORY, 0, 0), NAME)
 
