@@ -59,6 +59,14 @@ for name, px in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 
     os.makedirs(out, exist_ok=True)
     sized(px).save(os.path.join(out, "ic_launcher.png"))
 
+# Android adaptive icon: the launcher masks it (circle, squircle...) over our dark background, so the logo is drawn
+# at 66% of the 108 dp canvas, inside the safe zone. Without this, Android puts the old-style icon on a white plate.
+for name, px in {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}.items():
+    canvas = Image.new("RGBA", (px, px), (0, 0, 0, 0))
+    logo = sized(round(px * 0.69))
+    canvas.alpha_composite(logo, ((px - logo.width) // 2, (px - logo.height) // 2))
+    canvas.save(os.path.join(ROOT, "android", "app", "res", "mipmap-" + name, "ic_launcher_foreground.png"))
+
 # Web UI header logo and favicon / home-screen icon
 sized(512).save(os.path.join(ROOT, "ui", "logo.png"), optimize=True)  # crisp on high-DPI screens
 sized(512).save(os.path.join(ROOT, "ui", "apple-touch-icon.png"), optimize=True)
