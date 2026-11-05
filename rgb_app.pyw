@@ -99,7 +99,7 @@ def tray_image():
         return ico
 
 
-SUPPORT_URL = "https://buymeacoffee.com/EQQX2"
+SUPPORT_URL = "https://ko-fi.com/eqqx2"
 UI_IMAGES = {"/logo.png": "logo.png", "/favicon.ico": "logo.png", "/apple-touch-icon.png": "apple-touch-icon.png"}
 ICON = os.path.join(HERE, "rgb.ico")
 CACHE = os.path.join(applog.DATA_DIR, "cache")  # what the app writes goes to the user's folder, not the code's

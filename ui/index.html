@@ -754,7 +754,7 @@
     </section>
   </main>
   <footer class="support">
-    <button class="coffee" id="coffee" title="Support EqRGB: buymeacoffee.com/EQQX2">
+    <button class="coffee" id="coffee" title="Support EqRGB: ko-fi.com/eqqx2">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 8h1a4 4 0 0 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v3"/><path d="M10 2v3"/><path d="M14 2v3"/></svg>
       Buy me a coffee
     </button>
@@ -1650,7 +1650,7 @@ $("updateBtn").onclick = openUpd;
 $("updCancel").onclick = closeUpd;
 $("upd").addEventListener("keydown", e => { if (e.key === "Escape") closeUpd(); });
 $("updNotes").onclick = () => api.open_release_notes();
-$("coffee").onclick = () => { if (REMOTE) window.open("https://buymeacoffee.com/EQQX2", "_blank", "noopener"); else api.open_support(); };
+$("coffee").onclick = () => { if (REMOTE) window.open("https://ko-fi.com/eqqx2", "_blank", "noopener"); else api.open_support(); };
 $("updGo").onclick = async () => {
   $("updGo").disabled = true; updBusy = true;
   $("updMsg").textContent = "Starting the download…";
